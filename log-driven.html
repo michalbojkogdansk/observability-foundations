@@ -247,6 +247,7 @@ for line in log_lines:
       </select>
       <button id="stream-btn" onclick="toggleStream()" class="run-btn btn btn-sm bg-indigo-600 hover:bg-indigo-500 text-white border-0">▶ Start Stream</button>
       <button onclick="resetStream()" class="btn btn-sm btn-ghost text-slate-400 border border-slate-700/40">↺ Reset</button>
+      <span id="stream-timer" class="font-mono text-xs px-3 py-1 rounded-lg" style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);color:#94a3b8;min-width:80px;text-align:center">⏱ 00:00.0</span>
     </div>
   </div>
 
@@ -319,6 +320,33 @@ for line in log_lines:
     </div>
     <div id="plain-warn" class="hidden mt-3 text-xs text-amber-400">
       ⚠️ Plain text mode: regex extraction is ~25× slower and misses ~15% of duration values due to inconsistent message formats.
+    </div>
+  </div>
+
+  <!-- Execution History -->
+  <div class="card p-4 mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <div class="text-sm font-bold">Execution History</div>
+        <div class="text-xs text-slate-500 mt-0.5">Records each run — switch formats or speeds to compare cost side-by-side</div>
+      </div>
+      <button onclick="clearHistory()" class="btn btn-sm btn-ghost text-slate-400 border border-slate-700/40 text-xs">✕ Clear</button>
+    </div>
+    <div id="history-empty" class="text-xs text-slate-500 italic">No sessions recorded yet. Start and stop the stream to capture a run.</div>
+    <div id="history-wrap" class="hidden overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead><tr class="text-slate-500 border-b border-slate-700/40">
+          <th class="text-left py-1 pr-3">#</th>
+          <th class="text-left pr-3">Time</th>
+          <th class="text-left pr-3">Format</th>
+          <th class="text-left pr-3">Speed</th>
+          <th class="text-right pr-3">Rows</th>
+          <th class="text-right pr-3">Duration</th>
+          <th class="text-right pr-3">Rules Active</th>
+          <th class="text-right">Rows/sec</th>
+        </tr></thead>
+        <tbody id="history-tbody" class="font-mono"></tbody>
+      </table>
     </div>
   </div>
 
@@ -680,6 +708,80 @@ function runSearch(){
    SCENARIO 2 — Live Metric Extractor
 ════════════════════════════════════════ */
 var streamInterval=null, isStreaming=false, logFmt='structured';
+var streamStartTime=null, timerInterval=null, sessionDuration=0;
+var historyRuns=[], historyRunCount=0;
+
+function updateTimerDisplay(){
+  if(!streamStartTime) return;
+  var elapsed=Date.now()-streamStartTime;
+  var mm=Math.floor(elapsed/60000);
+  var ss=Math.floor((elapsed%60000)/1000);
+  var d=Math.floor((elapsed%1000)/100);
+  document.getElementById('stream-timer').textContent='⏱ '+
+    (mm<10?'0':'')+mm+':'+(ss<10?'0':'')+ss+'.'+d;
+  document.getElementById('stream-timer').style.color='#34d399';
+}
+
+function addHistoryRow(durationMs, rows){
+  historyRunCount++;
+  var speedSel=document.getElementById('stream-speed');
+  var speedLabel=speedSel.options[speedSel.selectedIndex].text;
+  var rulesActive=[
+    document.getElementById('rule-level').checked,
+    document.getElementById('rule-dur').checked,
+    document.getElementById('rule-svc').checked
+  ].filter(Boolean).length;
+  var rowsPerSec=durationMs>0?Math.round(rows/(durationMs/1000)):0;
+  var isFastest=historyRuns.length===0||durationMs/Math.max(rows,1)<Math.min.apply(null,historyRuns.map(function(r){return r.ms/Math.max(r.rows,1)}));
+  var isSlowest=historyRuns.length>0&&durationMs/Math.max(rows,1)>Math.max.apply(null,historyRuns.map(function(r){return r.ms/Math.max(r.rows,1)}));
+  historyRuns.push({ms:durationMs,rows:rows});
+  var now=new Date();
+  var ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
+  var rowStyle=isFastest?'color:#34d399':isSlowest?'color:#f87171':'';
+  var badge=isFastest?' <span style="background:rgba(52,211,153,0.15);color:#34d399;padding:1px 5px;border-radius:4px;font-size:10px">fastest</span>':
+             isSlowest?' <span style="background:rgba(248,113,113,0.15);color:#f87171;padding:1px 5px;border-radius:4px;font-size:10px">slowest</span>':'';
+  var tbody=document.getElementById('history-tbody');
+  var tr=document.createElement('tr');
+  tr.style.cssText='border-bottom:1px solid rgba(100,116,139,0.1);'+rowStyle;
+  tr.innerHTML='<td class="py-1.5 pr-3 text-slate-500">'+historyRunCount+'</td>'+
+    '<td class="pr-3 text-slate-400">'+ts+'</td>'+
+    '<td class="pr-3">'+(logFmt==='structured'?'<span style="color:#6366f1">JSON</span>':'<span style="color:#f59e0b">Plain</span>')+'</td>'+
+    '<td class="pr-3 text-slate-300">'+speedLabel+'</td>'+
+    '<td class="text-right pr-3 text-slate-300">'+rows.toLocaleString()+'</td>'+
+    '<td class="text-right pr-3 text-slate-300">'+durationMs.toLocaleString()+'ms'+badge+'</td>'+
+    '<td class="text-right pr-3 text-slate-400">'+rulesActive+'/3</td>'+
+    '<td class="text-right text-slate-300">'+rowsPerSec.toLocaleString()+'</td>';
+  tbody.appendChild(tr);
+  document.getElementById('history-empty').classList.add('hidden');
+  document.getElementById('history-wrap').classList.remove('hidden');
+  // re-highlight fastest/slowest
+  refreshHistoryHighlights();
+}
+
+function refreshHistoryHighlights(){
+  if(historyRuns.length<2) return;
+  var rates=historyRuns.map(function(r){return r.ms/Math.max(r.rows,1)});
+  var minRate=Math.min.apply(null,rates);
+  var maxRate=Math.max.apply(null,rates);
+  var rows=document.getElementById('history-tbody').querySelectorAll('tr');
+  rows.forEach(function(tr,i){
+    if(!historyRuns[i]) return;
+    var rate=historyRuns[i].ms/Math.max(historyRuns[i].rows,1);
+    tr.style.color=rate===minRate?'#34d399':rate===maxRate?'#f87171':'';
+    var cell=tr.querySelectorAll('td')[5];
+    var ms=cell.textContent.replace(/[^0-9]/g,'');
+    var badge=rate===minRate?' <span style="background:rgba(52,211,153,0.15);color:#34d399;padding:1px 5px;border-radius:4px;font-size:10px">fastest</span>':
+               rate===maxRate?' <span style="background:rgba(248,113,113,0.15);color:#f87171;padding:1px 5px;border-radius:4px;font-size:10px">slowest</span>':'';
+    cell.innerHTML=ms+'ms'+badge;
+  });
+}
+
+function clearHistory(){
+  historyRuns=[];historyRunCount=0;
+  document.getElementById('history-tbody').innerHTML='';
+  document.getElementById('history-empty').classList.remove('hidden');
+  document.getElementById('history-wrap').classList.add('hidden');
+}
 var sCntInfo=0, sCntWarn=0, sCntError=0, sTotalLines=0;
 var svcErrors={api:0,auth:0,db:0,jobs:0};
 var durBuckets=[0,0,0,0,0,0]; // <50,50-200,200-500,500-1K,1K-3K,>3K
@@ -759,8 +861,10 @@ function toggleStream(){
 function startStream(){
   if(isStreaming) return;
   isStreaming=true;
+  streamStartTime=Date.now();
   document.getElementById('stream-btn').textContent='⏸ Pause';
   document.getElementById('stream-dot').style.background='#34d399';
+  timerInterval=setInterval(updateTimerDisplay,100);
   var speed=parseInt(document.getElementById('stream-speed').value,10);
   streamInterval=setInterval(function(){
     var line=genLine();
@@ -769,10 +873,16 @@ function startStream(){
   },speed);
 }
 function stopStream(){
+  if(!isStreaming) return;
   isStreaming=false;
+  var elapsed=streamStartTime?Date.now()-streamStartTime:0;
   if(streamInterval){clearInterval(streamInterval);streamInterval=null;}
+  if(timerInterval){clearInterval(timerInterval);timerInterval=null;}
   document.getElementById('stream-btn').textContent='▶ Start Stream';
   document.getElementById('stream-dot').style.background='#64748b';
+  document.getElementById('stream-timer').style.color='#94a3b8';
+  if(sTotalLines>0) addHistoryRow(elapsed, sTotalLines);
+  streamStartTime=null;
 }
 function resetStream(){
   stopStream();
@@ -783,6 +893,8 @@ function resetStream(){
   document.getElementById('cnt-warn').textContent='0';
   document.getElementById('cnt-error').textContent='0';
   document.getElementById('stream-counter').textContent='0 lines';
+  document.getElementById('stream-timer').textContent='⏱ 00:00.0';
+  document.getElementById('stream-timer').style.color='#94a3b8';
   document.getElementById('stream-box').innerHTML='<span class="s-line INFO" style="color:#475569;font-style:italic">Waiting for stream to start…</span>';
   drawSvcChart(); drawHistChart();
 }
