@@ -328,7 +328,7 @@ for line in log_lines:
     <div class="flex items-center justify-between mb-3">
       <div>
         <div class="text-sm font-bold">Execution History</div>
-        <div class="text-xs text-slate-500 mt-0.5">Records each run — switch formats or speeds to compare cost side-by-side</div>
+        <div class="text-xs text-slate-500 mt-0.5">Records each run — switch formats or speeds to compare. <span style="color:#34d399">Green</span> = lowest parse cost, <span style="color:#f87171">red</span> = highest.</div>
       </div>
       <button onclick="clearHistory()" class="btn btn-sm btn-ghost text-slate-400 border border-slate-700/40 text-xs">✕ Clear</button>
     </div>
@@ -342,6 +342,7 @@ for line in log_lines:
           <th class="text-left pr-3">Speed</th>
           <th class="text-right pr-3">Rows</th>
           <th class="text-right pr-3">Duration</th>
+          <th class="text-right pr-3">Parse µs/line</th>
           <th class="text-right pr-3">Rules Active</th>
           <th class="text-right">Rows/sec</th>
         </tr></thead>
@@ -722,7 +723,7 @@ function updateTimerDisplay(){
   document.getElementById('stream-timer').style.color='#34d399';
 }
 
-function addHistoryRow(durationMs, rows){
+function addHistoryRow(durationMs, rows, parseCostUs){
   historyRunCount++;
   var speedSel=document.getElementById('stream-speed');
   var speedLabel=speedSel.options[speedSel.selectedIndex].text;
@@ -732,47 +733,47 @@ function addHistoryRow(durationMs, rows){
     document.getElementById('rule-svc').checked
   ].filter(Boolean).length;
   var rowsPerSec=durationMs>0?Math.round(rows/(durationMs/1000)):0;
-  var isFastest=historyRuns.length===0||durationMs/Math.max(rows,1)<Math.min.apply(null,historyRuns.map(function(r){return r.ms/Math.max(r.rows,1)}));
-  var isSlowest=historyRuns.length>0&&durationMs/Math.max(rows,1)>Math.max.apply(null,historyRuns.map(function(r){return r.ms/Math.max(r.rows,1)}));
-  historyRuns.push({ms:durationMs,rows:rows});
+  var costStr=parseCostUs>0?parseCostUs.toFixed(2):'—';
+  historyRuns.push({ms:durationMs,rows:rows,cost:parseCostUs||0,fmt:logFmt});
   var now=new Date();
   var ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
-  var rowStyle=isFastest?'color:#34d399':isSlowest?'color:#f87171':'';
-  var badge=isFastest?' <span style="background:rgba(52,211,153,0.15);color:#34d399;padding:1px 5px;border-radius:4px;font-size:10px">fastest</span>':
-             isSlowest?' <span style="background:rgba(248,113,113,0.15);color:#f87171;padding:1px 5px;border-radius:4px;font-size:10px">slowest</span>':'';
   var tbody=document.getElementById('history-tbody');
   var tr=document.createElement('tr');
-  tr.style.cssText='border-bottom:1px solid rgba(100,116,139,0.1);'+rowStyle;
+  tr.style.cssText='border-bottom:1px solid rgba(100,116,139,0.1);';
   tr.innerHTML='<td class="py-1.5 pr-3 text-slate-500">'+historyRunCount+'</td>'+
     '<td class="pr-3 text-slate-400">'+ts+'</td>'+
     '<td class="pr-3">'+(logFmt==='structured'?'<span style="color:#6366f1">JSON</span>':'<span style="color:#f59e0b">Plain</span>')+'</td>'+
     '<td class="pr-3 text-slate-300">'+speedLabel+'</td>'+
     '<td class="text-right pr-3 text-slate-300">'+rows.toLocaleString()+'</td>'+
-    '<td class="text-right pr-3 text-slate-300">'+durationMs.toLocaleString()+'ms'+badge+'</td>'+
+    '<td class="text-right pr-3 text-slate-300">'+durationMs.toLocaleString()+'ms</td>'+
+    '<td class="text-right pr-3 text-slate-300" data-cost="'+parseCostUs.toFixed(4)+'">'+costStr+'</td>'+
     '<td class="text-right pr-3 text-slate-400">'+rulesActive+'/3</td>'+
     '<td class="text-right text-slate-300">'+rowsPerSec.toLocaleString()+'</td>';
   tbody.appendChild(tr);
   document.getElementById('history-empty').classList.add('hidden');
   document.getElementById('history-wrap').classList.remove('hidden');
-  // re-highlight fastest/slowest
+  // re-highlight fastest/slowest based on parse cost
   refreshHistoryHighlights();
 }
 
 function refreshHistoryHighlights(){
   if(historyRuns.length<2) return;
-  var rates=historyRuns.map(function(r){return r.ms/Math.max(r.rows,1)});
-  var minRate=Math.min.apply(null,rates);
-  var maxRate=Math.max.apply(null,rates);
-  var rows=document.getElementById('history-tbody').querySelectorAll('tr');
-  rows.forEach(function(tr,i){
+  var costs=historyRuns.map(function(r){return r.cost;});
+  var minCost=Math.min.apply(null,costs);
+  var maxCost=Math.max.apply(null,costs);
+  if(minCost===maxCost) return; // no difference yet
+  var trs=document.getElementById('history-tbody').querySelectorAll('tr');
+  trs.forEach(function(tr,i){
     if(!historyRuns[i]) return;
-    var rate=historyRuns[i].ms/Math.max(historyRuns[i].rows,1);
-    tr.style.color=rate===minRate?'#34d399':rate===maxRate?'#f87171':'';
-    var cell=tr.querySelectorAll('td')[5];
-    var ms=cell.textContent.replace(/[^0-9]/g,'');
-    var badge=rate===minRate?' <span style="background:rgba(52,211,153,0.15);color:#34d399;padding:1px 5px;border-radius:4px;font-size:10px">fastest</span>':
-               rate===maxRate?' <span style="background:rgba(248,113,113,0.15);color:#f87171;padding:1px 5px;border-radius:4px;font-size:10px">slowest</span>':'';
-    cell.innerHTML=ms+'ms'+badge;
+    var cost=historyRuns[i].cost;
+    var isFastest=cost===minCost;
+    var isSlowest=cost===maxCost;
+    tr.style.color=isFastest?'#34d399':isSlowest?'#f87171':'';
+    var costCell=tr.querySelectorAll('td')[6];
+    var badge=isFastest?' <span style="background:rgba(52,211,153,0.15);color:#34d399;padding:1px 5px;border-radius:4px;font-size:10px">fastest</span>':
+               isSlowest?' <span style="background:rgba(248,113,113,0.15);color:#f87171;padding:1px 5px;border-radius:4px;font-size:10px">slowest</span>':'';
+    var rawCost=parseFloat(costCell.getAttribute('data-cost')||'0');
+    costCell.innerHTML=(rawCost>0?rawCost.toFixed(2):'—')+badge;
   });
 }
 
@@ -786,6 +787,17 @@ var sCntInfo=0, sCntWarn=0, sCntError=0, sTotalLines=0;
 var svcErrors={api:0,auth:0,db:0,jobs:0};
 var durBuckets=[0,0,0,0,0,0]; // <50,50-200,200-500,500-1K,1K-3K,>3K
 var MAX_STREAM_LINES=200;
+var streamParseCostUs=0;
+
+function measureCurrentFormatCost(){
+  // Run 500-sample mini-benchmark for current format and return µs/line
+  var samples=makeSampleLines(500);
+  // warm-up
+  if(logFmt==='structured'){benchJSON(samples.slice(0,50));}
+  else{benchRegex(samples.slice(0,50));}
+  var ms=logFmt==='structured'?benchJSON(samples):benchRegex(samples);
+  return ms/samples.length*1000; // µs/line
+}
 
 function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
 function nowTs(){var d=new Date();return d.toISOString().substr(11,12)+'Z';}
@@ -861,6 +873,7 @@ function toggleStream(){
 function startStream(){
   if(isStreaming) return;
   isStreaming=true;
+  streamParseCostUs=measureCurrentFormatCost();
   streamStartTime=Date.now();
   document.getElementById('stream-btn').textContent='⏸ Pause';
   document.getElementById('stream-dot').style.background='#34d399';
@@ -881,12 +894,13 @@ function stopStream(){
   document.getElementById('stream-btn').textContent='▶ Start Stream';
   document.getElementById('stream-dot').style.background='#64748b';
   document.getElementById('stream-timer').style.color='#94a3b8';
-  if(sTotalLines>0) addHistoryRow(elapsed, sTotalLines);
+  if(sTotalLines>0) addHistoryRow(elapsed, sTotalLines, streamParseCostUs);
   streamStartTime=null;
 }
 function resetStream(){
   stopStream();
   sCntInfo=0;sCntWarn=0;sCntError=0;sTotalLines=0;
+  streamParseCostUs=0;
   svcErrors={api:0,auth:0,db:0,jobs:0};
   durBuckets=[0,0,0,0,0,0];
   document.getElementById('cnt-info').textContent='0';
