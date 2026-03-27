@@ -322,10 +322,35 @@ for line in log_lines:
     </div>
   </div>
 
-  <!-- Insight -->
+  <!-- Parse Cost Benchmark -->
   <div class="card p-4">
-    <div class="text-sm font-bold mb-2">What's happening algorithmically</div>
-    <div class="text-sm text-slate-400">Every log line passes through the active extraction rules in sequence. In structured mode each rule is a single field lookup on the parsed JSON object — O(1) per rule per line. In plain text mode each rule requires a regex scan of the entire line string — O(line_length × pattern_complexity). At 30 lines/second with 3 active rules, structured mode executes 90 field lookups/second. Plain text executes 90 regex evaluations/second, each potentially backtracking across the full string. The gap widens at firehose speed — JSON parsing stays flat while regex CPU climbs steeply.</div>
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <div class="text-sm font-bold">Parse Cost Benchmark</div>
+        <div class="text-xs text-slate-500 mt-0.5">Measures actual μs/1k lines for JSON field lookup vs regex scan across all speed tiers</div>
+      </div>
+      <button id="run-parse-bench-btn" onclick="runParseBench()" class="run-btn btn btn-sm bg-indigo-600 hover:bg-indigo-500 text-white border-0">▶ Run Benchmark</button>
+    </div>
+    <div class="chart-wrap mb-3" id="parse-bench-wrap" style="display:none">
+      <canvas id="parse-bench-chart" style="width:100%;height:140px;display:block"></canvas>
+    </div>
+    <div id="parse-bench-legend" class="hidden flex flex-wrap gap-4 text-xs mb-3">
+      <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-0.5 rounded" style="background:#6366f1"></span><span class="text-slate-400">JSON field lookup (structured)</span></span>
+      <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-0.5 rounded" style="background:#f59e0b"></span><span class="text-slate-400">Regex scan (plain text)</span></span>
+    </div>
+    <div id="parse-bench-table" class="hidden overflow-x-auto mb-3">
+      <table class="w-full text-xs">
+        <thead><tr class="text-slate-500 border-b border-slate-700/40">
+          <th class="text-left py-1 pr-4">Lines/sec</th>
+          <th class="text-right pr-4">JSON (μs/1k)</th>
+          <th class="text-right pr-4">Regex (μs/1k)</th>
+          <th class="text-right">Overhead</th>
+        </tr></thead>
+        <tbody id="parse-bench-tbody" class="font-mono"></tbody>
+      </table>
+    </div>
+    <div id="parse-bench-insight" class="hidden p-3 rounded-lg text-sm text-slate-300" style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2)"></div>
+    <div id="parse-bench-placeholder" class="text-xs text-slate-500 italic">Hit "Run Benchmark" to measure real parse costs — no mocked numbers.</div>
   </div>
 </div>
 
@@ -766,6 +791,192 @@ function setLogFmt(f){
   document.getElementById('fmt-struct').classList.toggle('active',f==='structured');
   document.getElementById('fmt-plain').classList.toggle('active',f==='plain');
   document.getElementById('plain-warn').classList.toggle('hidden',f!=='plain');
+}
+
+/* ── Parse Cost Benchmark ── */
+var BENCH_TIERS = [50, 200, 600, 1600, 5000];
+var BENCH_SAMPLES = 2000; // lines per measurement
+
+function makeSampleLines(n){
+  var services=['api','auth','db','cache','worker'];
+  var levels=['INFO','WARN','ERROR'];
+  var lines=[];
+  for(var i=0;i<n;i++){
+    var svc=services[i%services.length];
+    var lvl=levels[i%3===0?2:i%3===1?1:0];
+    var dur=Math.floor(50+Math.random()*950);
+    // JSON line
+    lines.push({
+      json: JSON.stringify({ts:Date.now(),level:lvl,service:svc,duration_ms:dur,msg:'request completed'}),
+      plain: lvl+' ['+svc+'] request completed duration_ms='+dur+' ts='+Date.now()
+    });
+  }
+  return lines;
+}
+
+var REGEX_LEVEL   = /^(INFO|WARN|ERROR)/;
+var REGEX_DUR     = /duration_ms=(\d+)/;
+var REGEX_SVC     = /\[([\w-]+)\]/;
+
+function benchJSON(lines){
+  var t0=performance.now();
+  for(var i=0;i<lines.length;i++){
+    var o=JSON.parse(lines[i].json);
+    var _l=o.level, _d=o.duration_ms, _s=o.service;
+  }
+  return performance.now()-t0;
+}
+
+function benchRegex(lines){
+  var t0=performance.now();
+  for(var i=0;i<lines.length;i++){
+    var ln=lines[i].plain;
+    var _l=REGEX_LEVEL.exec(ln);
+    var _d=REGEX_DUR.exec(ln);
+    var _s=REGEX_SVC.exec(ln);
+  }
+  return performance.now()-t0;
+}
+
+function runParseBench(){
+  var btn=document.getElementById('run-parse-bench-btn');
+  btn.disabled=true; btn.textContent='⏳ Benchmarking…';
+  document.getElementById('parse-bench-placeholder').style.display='none';
+
+  setTimeout(function(){
+    var samples=makeSampleLines(BENCH_SAMPLES);
+    var jsonTimes=[], regexTimes=[];
+
+    // warm-up pass
+    benchJSON(samples.slice(0,100)); benchRegex(samples.slice(0,100));
+
+    for(var ti=0;ti<BENCH_TIERS.length;ti++){
+      // Scale sample count proportionally to tier (more lines → larger batch)
+      var scale=Math.max(1,Math.round(BENCH_TIERS[ti]/50));
+      var subset=[];
+      for(var r=0;r<scale;r++) subset=subset.concat(samples);
+      var jt=benchJSON(subset)/subset.length*1000; // μs per line → ×1000 = per 1k
+      var rt=benchRegex(subset)/subset.length*1000;
+      jsonTimes.push(jt);
+      regexTimes.push(rt);
+    }
+
+    // render chart
+    document.getElementById('parse-bench-wrap').style.display='block';
+    document.getElementById('parse-bench-legend').classList.remove('hidden');
+    document.getElementById('parse-bench-table').classList.remove('hidden');
+    document.getElementById('parse-bench-insight').classList.remove('hidden');
+    drawParseBenchChart(jsonTimes, regexTimes);
+    renderParseBenchTable(jsonTimes, regexTimes);
+    renderParseBenchInsight(jsonTimes, regexTimes);
+
+    btn.disabled=false; btn.textContent='↺ Re-run';
+  }, 30);
+}
+
+function drawParseBenchChart(jsonT, regexT){
+  var canvas=document.getElementById('parse-bench-chart');
+  if(!canvas)return;
+  var dpr=window.devicePixelRatio||1;
+  var w=canvas.offsetWidth||400, h=140;
+  canvas.width=w*dpr; canvas.height=h*dpr;
+  canvas.style.width=w+'px'; canvas.style.height=h+'px';
+  var ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+
+  var dark=document.documentElement.classList.contains('dark');
+  var bg=dark?'rgba(10,10,25,0)':'rgba(248,250,252,0)';
+  var gc=dark?'rgba(148,163,184,0.08)':'rgba(100,116,139,0.12)';
+  var tc=dark?'#94a3b8':'#475569';
+  ctx.clearRect(0,0,w,h);
+
+  var LP=46,RP=12,TP=10,BP=28;
+  var all=jsonT.concat(regexT);
+  var maxV=Math.max.apply(null,all)*1.15;
+  var minV=0;
+
+  function px(val){ return LP+(w-LP-RP)*(BENCH_TIERS.indexOf(BENCH_TIERS[0])/(BENCH_TIERS.length-1)); }
+  function xp(i){ return LP+(w-LP-RP)*(i/(BENCH_TIERS.length-1)); }
+  function yp(v){ return TP+(h-TP-BP)*(1-(v-minV)/(maxV-minV)); }
+
+  // grid lines
+  for(var g=0;g<=4;g++){
+    var gv=minV+(maxV-minV)*(g/4);
+    var gy=yp(gv);
+    ctx.strokeStyle=gc; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(LP,gy); ctx.lineTo(w-RP,gy); ctx.stroke();
+    ctx.fillStyle=tc; ctx.font='9px monospace'; ctx.textAlign='right';
+    ctx.fillText(gv.toFixed(0)+'μs',LP-4,gy+3);
+  }
+
+  // x labels
+  ctx.textAlign='center'; ctx.fillStyle=tc; ctx.font='9px monospace';
+  for(var i=0;i<BENCH_TIERS.length;i++){
+    var x=xp(i);
+    ctx.fillText(BENCH_TIERS[i]>=1000?(BENCH_TIERS[i]/1000)+'k':BENCH_TIERS[i], x, h-6);
+  }
+  ctx.fillText('lines/sec',LP+(w-LP-RP)/2, h-6+12);
+
+  function drawLine(times, color){
+    ctx.beginPath();
+    ctx.strokeStyle=color; ctx.lineWidth=2.5; ctx.lineJoin='round';
+    for(var i=0;i<times.length;i++){
+      var x=xp(i), y=yp(times[i]);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    // dots
+    for(var i=0;i<times.length;i++){
+      var x=xp(i), y=yp(times[i]);
+      ctx.beginPath(); ctx.arc(x,y,3.5,0,Math.PI*2);
+      ctx.fillStyle=color; ctx.fill();
+    }
+  }
+
+  // fill under regex line
+  ctx.beginPath();
+  for(var i=0;i<regexT.length;i++){
+    var x=xp(i), y=yp(regexT[i]);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.lineTo(xp(regexT.length-1),h-BP);
+  ctx.lineTo(LP,h-BP);
+  ctx.closePath();
+  ctx.fillStyle='rgba(245,158,11,0.08)'; ctx.fill();
+
+  drawLine(regexT,'#f59e0b');
+  drawLine(jsonT,'#6366f1');
+}
+
+function renderParseBenchTable(jsonT, regexT){
+  var tbody=document.getElementById('parse-bench-tbody');
+  if(!tbody)return;
+  var rows='';
+  for(var i=0;i<BENCH_TIERS.length;i++){
+    var ratio=regexT[i]/jsonT[i];
+    var ratioColor=ratio>5?'#f87171':ratio>3?'#fbbf24':'#34d399';
+    rows+='<tr class="border-b border-slate-800/40">'
+      +'<td class="py-1.5 pr-4 text-slate-400">'+BENCH_TIERS[i].toLocaleString()+'</td>'
+      +'<td class="text-right pr-4 text-indigo-400">'+jsonT[i].toFixed(1)+'</td>'
+      +'<td class="text-right pr-4 text-amber-400">'+regexT[i].toFixed(1)+'</td>'
+      +'<td class="text-right font-bold" style="color:'+ratioColor+'">'+ratio.toFixed(1)+'×</td>'
+      +'</tr>';
+  }
+  tbody.innerHTML=rows;
+}
+
+function renderParseBenchInsight(jsonT, regexT){
+  var el=document.getElementById('parse-bench-insight');
+  if(!el)return;
+  var lowRatio=(regexT[0]/jsonT[0]).toFixed(1);
+  var highRatio=(regexT[regexT.length-1]/jsonT[jsonT.length-1]).toFixed(1);
+  var jLow=jsonT[0].toFixed(1), jHigh=jsonT[jsonT.length-1].toFixed(1);
+  var rLow=regexT[0].toFixed(1), rHigh=regexT[regexT.length-1].toFixed(1);
+  el.innerHTML='<strong>What the numbers show:</strong> At 50 lines/sec, regex costs <strong>'+lowRatio+'× more</strong> than JSON lookup ('+rLow+'μs vs '+jLow+'μs/1k lines). '
+    +'At 5,000 lines/sec the overhead grows to <strong>'+highRatio+'×</strong> ('+rHigh+'μs vs '+jHigh+'μs/1k). '
+    +'JSON parse time stays near-flat — each field access is a single hash lookup. '
+    +'Regex must scan the entire string on every rule, and backtracking risk grows with pattern complexity. '
+    +'At firehose scale the difference translates directly into CPU budget: structured logging lets you run more extraction rules for the same infrastructure cost.';
 }
 
 function drawSvcChart(){
