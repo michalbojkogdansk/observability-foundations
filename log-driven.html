@@ -7,37 +7,1026 @@
 <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script>tailwind.config = { darkMode: 'class' }</script>
+<link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" id="prism-dark" />
+<link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css" rel="stylesheet" id="prism-light" disabled />
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
 <link rel="stylesheet" href="shared/style.css" />
+<style>
+.scenario-tab { padding:0.5rem 1.25rem; border-radius:8px; font-size:0.82rem; font-weight:600; cursor:pointer; border:1px solid; transition:all 0.15s; white-space:nowrap; background:transparent; }
+.scenario-tab.active { background:rgba(99,102,241,0.2); border-color:rgba(99,102,241,0.4); color:#a5b4fc; }
+.scenario-tab:not(.active) { color:#64748b; border-color:rgba(100,116,139,0.2); }
+.scenario-tab:not(.active):hover { border-color:rgba(99,102,241,0.3); color:#94a3b8; }
+
+.log-mono { font-family:'Consolas','Monaco','Courier New',monospace; font-size:0.68rem; line-height:1.65; }
+.log-panel { min-height:210px; padding:0.75rem; border-radius:0.75rem; overflow-x:auto; }
+.dark .log-panel { background:rgba(10,10,25,0.85); border:1px solid rgba(99,102,241,0.12); }
+html:not(.dark) .log-panel { background:rgba(248,250,252,0.95); border:1px solid #e2e8f0; color:#334155; }
+
+.log-line { display:block; padding:2px 5px; border-radius:3px; white-space:pre-wrap; word-break:break-all; border-left:3px solid transparent; margin-bottom:2px; transition:background 0.3s; }
+.log-line.matched { border-left-color:#6366f1; background:rgba(99,102,241,0.13); }
+.match-hl { background:rgba(250,204,21,0.3); border-radius:2px; padding:0 2px; }
+
+.stream-box { overflow-y:auto; padding:0.6rem; border-radius:0.75rem; }
+.dark .stream-box { background:rgba(10,10,25,0.85); border:1px solid rgba(99,102,241,0.12); }
+html:not(.dark) .stream-box { background:rgba(248,250,252,0.95); border:1px solid #e2e8f0; }
+
+.s-line { display:block; line-height:1.55; padding:1px 0; }
+.s-line.ERROR { color:#ef4444; }
+.s-line.WARN  { color:#f59e0b; }
+.s-line.INFO  { color:#94a3b8; }
+
+.chart-wrap { border-radius:0.75rem; overflow:hidden; padding:0.5rem; }
+.dark .chart-wrap { background:rgba(10,10,25,0.85); border:1px solid rgba(99,102,241,0.12); }
+html:not(.dark) .chart-wrap { background:rgba(248,250,252,0.95); border:1px solid #e2e8f0; }
+
+.mode-toggle { display:inline-flex; border-radius:8px; overflow:hidden; border:1px solid rgba(99,102,241,0.25); }
+.mode-btn { padding:0.35rem 1rem; font-size:0.78rem; font-weight:600; cursor:pointer; border:none; transition:all 0.15s; }
+.mode-btn.active  { background:rgba(99,102,241,0.25); color:#a5b4fc; }
+.mode-btn:not(.active) { background:transparent; color:#64748b; }
+.mode-btn:not(.active):hover { color:#94a3b8; }
+
+.inc-line { display:block; padding:2px 6px; border-radius:3px; border-left:3px solid transparent; margin-bottom:2px; }
+.inc-line.ERROR { color:#ef4444; }
+.inc-line.WARN  { color:#f59e0b; }
+.inc-line.INFO  { color:#94a3b8; }
+.inc-line.traced    { border-left-color:#6366f1; background:rgba(99,102,241,0.13); }
+.inc-line.grep-hit  { border-left-color:#f472b6; background:rgba(244,114,182,0.09); }
+
+.run-btn { min-width:110px; }
+</style>
 </head>
 <body class="min-h-screen">
 <div id="site-nav"></div>
 
-<main class="max-w-7xl mx-auto px-4 py-8">
-  <div class="card p-8 text-center">
-    <div class="text-6xl mb-4">📋</div>
-    <h1 class="text-3xl font-bold mb-3">Log-Driven Development</h1>
-    <p class="text-slate-400 max-w-2xl mx-auto mb-6">Using structured logging as a foundation for observability, debugging, and data engineering pipelines. Turn your logs from afterthought to first-class data.</p>
-    <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 text-amber-400 text-sm font-medium">
-      🚧 Coming Soon
+<!-- HERO -->
+<header class="hero-gradient py-5 px-6 border-b border-indigo-500/10">
+  <div class="max-w-7xl mx-auto">
+    <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight mb-0.5">
+      <span class="text-indigo-400">Log</span><span class="text-slate-500">-</span><span class="text-pink-400">Driven</span>
+      <span class="text-slate-300 font-light ml-2">Development</span>
+    </h1>
+    <p class="text-slate-400 text-sm max-w-2xl">Three interactive scenarios — log format comparison, live metric extraction, incident reconstruction — showing why structured logs are an infrastructure decision, not a style choice.</p>
+  </div>
+</header>
+
+<!-- SCENARIO PICKER -->
+<section class="px-4 md:px-8 py-5">
+  <div class="text-center mb-3">
+    <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">① Choose a Scenario</span>
+  </div>
+  <div class="flex flex-wrap justify-center gap-3">
+    <button class="scenario-tab active" onclick="switchScenario(1)" id="stab-1">🔍 Log Structure Comparator</button>
+    <button class="scenario-tab" onclick="switchScenario(2)" id="stab-2">📊 Live Metric Extractor</button>
+    <button class="scenario-tab" onclick="switchScenario(3)" id="stab-3">🕵️ Incident Correlation Timeline</button>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════
+     SCENARIO 1: LOG STRUCTURE COMPARATOR
+══════════════════════════════════════════ -->
+<div id="s1" class="px-4 md:px-8 pb-10 max-w-7xl mx-auto">
+
+  <div class="glass-card p-4 mb-4">
+    <div class="flex flex-wrap items-center gap-3">
+      <p class="text-sm text-slate-400 flex-1 min-w-[180px]">Same 5 production events in 3 formats. Pick a query — see how format determines regex complexity, parse speed, and false positive risk.</p>
+      <label class="text-xs text-slate-400 shrink-0">Search Query:</label>
+      <select id="query-select" onchange="resetSearch()" class="select select-sm text-sm min-w-[260px]" style="background:rgba(30,30,50,0.7);border-color:rgba(99,102,241,0.2);color:#cbd5e1">
+        <option value="0">Requests slower than 500 ms</option>
+        <option value="1">Errors from auth service only</option>
+        <option value="2">Checkout requests with HTTP 200</option>
+        <option value="3">All ERROR level events</option>
+        <option value="4">Jobs taking more than 5 seconds</option>
+      </select>
+      <button id="run-search-btn" onclick="runSearch()" class="run-btn btn btn-sm bg-indigo-600 hover:bg-indigo-500 text-white border-0 shrink-0">▶ Run Search</button>
     </div>
   </div>
 
-  <div class="card p-6 mt-6">
-    <h2 class="text-xl font-bold mb-4">What you'll learn</h2>
-    <ul class="space-y-3 text-slate-300">
-      <li>✅ Structured logging patterns and standards</li>
-      <li>✅ Log aggregation and search strategies</li>
-      <li>✅ Building metrics from log streams</li>
-      <li>✅ From debugging to data pipeline with logs</li>
-    </ul>
+  <!-- 3-column panels -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-2">
+        <div><span class="text-sm font-bold">Plain Text</span> <span class="text-xs text-slate-500">unstructured</span></div>
+        <span id="plain-result" class="text-xs text-slate-500">—</span>
+      </div>
+      <div class="log-panel log-mono" id="plain-panel"></div>
+      <div class="mt-3 space-y-1" id="plain-stats"><div class="text-xs text-slate-500 italic">Run a search to see metrics</div></div>
+    </div>
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-2">
+        <div><span class="text-sm font-bold">key=value</span> <span class="text-xs text-slate-500">logfmt</span></div>
+        <span id="kv-result" class="text-xs text-slate-500">—</span>
+      </div>
+      <div class="log-panel log-mono" id="kv-panel"></div>
+      <div class="mt-3 space-y-1" id="kv-stats"><div class="text-xs text-slate-500 italic">Run a search to see metrics</div></div>
+    </div>
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-2">
+        <div><span class="text-sm font-bold">JSON</span> <span class="text-xs text-slate-500">structured</span></div>
+        <span id="json-result" class="text-xs text-slate-500">—</span>
+      </div>
+      <div class="log-panel log-mono" id="json-panel"></div>
+      <div class="mt-3 space-y-1" id="json-stats"><div class="text-xs text-slate-500 italic">Run a search to see metrics</div></div>
+    </div>
   </div>
-</main>
+
+  <!-- Performance bars -->
+  <div class="glass-card p-5 mb-4" id="s1-comparison" style="display:none">
+    <h3 class="text-sm font-bold mb-4">Search Performance (per 1 M log lines)</h3>
+    <div class="space-y-4">
+      <div>
+        <div class="flex justify-between text-xs mb-1"><span class="text-slate-400">Plain Text — regex scan</span><span id="plain-ms" class="font-mono text-red-400 font-bold">—</span></div>
+        <div class="h-2 rounded-full bg-slate-800/50 overflow-hidden"><div id="plain-pbar" class="h-full bg-red-500/70 rounded-full" style="width:0%;transition:width 0.7s ease"></div></div>
+        <div id="plain-sn" class="text-[11px] text-slate-500 mt-1"></div>
+      </div>
+      <div>
+        <div class="flex justify-between text-xs mb-1"><span class="text-slate-400">key=value — split + filter</span><span id="kv-ms" class="font-mono text-amber-400 font-bold">—</span></div>
+        <div class="h-2 rounded-full bg-slate-800/50 overflow-hidden"><div id="kv-pbar" class="h-full bg-amber-500/70 rounded-full" style="width:0%;transition:width 0.7s ease 0.1s"></div></div>
+        <div id="kv-sn" class="text-[11px] text-slate-500 mt-1"></div>
+      </div>
+      <div>
+        <div class="flex justify-between text-xs mb-1"><span class="text-slate-400">JSON — parse + field access</span><span id="json-ms" class="font-mono text-emerald-400 font-bold">—</span></div>
+        <div class="h-2 rounded-full bg-slate-800/50 overflow-hidden"><div id="json-pbar" class="h-full bg-emerald-500/70 rounded-full" style="width:0%;transition:width 0.7s ease 0.2s"></div></div>
+        <div id="json-sn" class="text-[11px] text-slate-500 mt-1"></div>
+      </div>
+    </div>
+    <div class="mt-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-sm text-slate-300" id="s1-insight">—</div>
+  </div>
+
+  <!-- Collapsible code -->
+  <div class="card p-4">
+    <button onclick="toggleCode('code-s1')" class="flex items-center gap-2 text-sm font-semibold w-full text-left">
+      <span id="code-s1-arrow">▶</span> How each format is searched (Python)
+    </button>
+    <div id="code-s1" style="display:none" class="mt-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <div class="text-xs text-slate-500 mb-1">Plain text — custom regex per query</div>
+          <pre class="rounded-lg overflow-auto" style="max-height:210px;font-size:0.68rem;background:rgba(10,10,25,0.85);padding:0.75rem;border:1px solid rgba(99,102,241,0.1)"><code class="language-python"># Every query needs hand-crafted regex.
+# Example: find duration_ms > 500
+import re
+pattern = re.compile(
+    r'(?:\[(\d+)ms\]'
+    r'|\b(\d+)ms\b'
+    r'|took\s+(\d+))'
+)
+results = []
+for line in log_lines:
+    m = pattern.search(line)
+    if m:
+        val = int(next(
+            g for g in m.groups() if g
+        ))
+        if val > 500:
+            results.append(line)
+# Risk: "attempts=3" or HTTP status
+# codes can produce false positives.
+# Regex breaks on message rewording.</code></pre>
+        </div>
+        <div>
+          <div class="text-xs text-slate-500 mb-1">key=value — consistent field parsing</div>
+          <pre class="rounded-lg overflow-auto" style="max-height:210px;font-size:0.68rem;background:rgba(10,10,25,0.85);padding:0.75rem;border:1px solid rgba(99,102,241,0.1)"><code class="language-python"># Split on spaces, extract key=value pairs
+results = []
+for line in log_lines:
+    fields = {}
+    for token in line.split():
+        if '=' in token:
+            k, v = token.split('=', 1)
+            fields[k] = v
+    duration = int(
+        fields.get('duration_ms', 0)
+    )
+    if duration > 500:
+        results.append(line)
+# Reliable: field names are explicit.
+# Template-independent: message text
+# changes never break queries.
+# Still O(n): parse all lines.</code></pre>
+        </div>
+        <div>
+          <div class="text-xs text-slate-500 mb-1">JSON — native parse, typed fields</div>
+          <pre class="rounded-lg overflow-auto" style="max-height:210px;font-size:0.68rem;background:rgba(10,10,25,0.85);padding:0.75rem;border:1px solid rgba(99,102,241,0.1)"><code class="language-python">import json
+
+results = []
+for line in log_lines:
+    obj = json.loads(line)
+    # duration_ms is always an int —
+    # never confused with other fields
+    if obj.get('duration_ms', 0) > 500:
+        results.append(obj)
+
+# Fast: C-extension JSON parser.
+# Safe: no regex, zero ambiguity.
+# Indexable: add ElasticSearch or
+# DuckDB for sub-ms multi-field
+# queries across billions of lines.</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCENARIO 2: LIVE METRIC EXTRACTOR
+══════════════════════════════════════════ -->
+<div id="s2" style="display:none" class="px-4 md:px-8 pb-10 max-w-7xl mx-auto">
+
+  <div class="glass-card p-4 mb-4">
+    <div class="flex flex-wrap items-center gap-3">
+      <p class="text-sm text-slate-400 flex-1 min-w-[180px]">A log stream at configurable speed. Watch metrics emerge in real-time — no StatsD agent, no Prometheus scrape config. Just extraction rules applied to the stream.</p>
+      <label class="text-xs text-slate-400">Format:</label>
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="fmt-struct" onclick="setLogFmt('structured')">Structured JSON</button>
+        <button class="mode-btn" id="fmt-plain" onclick="setLogFmt('plain')">Plain Text</button>
+      </div>
+      <label class="text-xs text-slate-400">Speed:</label>
+      <select id="stream-speed" class="select select-sm text-xs" style="background:rgba(30,30,50,0.7);border-color:rgba(99,102,241,0.2);color:#cbd5e1">
+        <option value="600">Slow (2/s)</option>
+        <option value="200" selected>Normal (5/s)</option>
+        <option value="80">Fast (12/s)</option>
+        <option value="33">Firehose (30/s)</option>
+      </select>
+      <button id="stream-btn" onclick="toggleStream()" class="run-btn btn btn-sm bg-indigo-600 hover:bg-indigo-500 text-white border-0">▶ Start Stream</button>
+      <button onclick="resetStream()" class="btn btn-sm btn-ghost text-slate-400 border border-slate-700/40">↺ Reset</button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+    <!-- Log stream panel -->
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-bold">Live Log Stream</span>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-slate-500" id="stream-counter">0 lines</span>
+          <span id="stream-dot" class="inline-block w-2 h-2 rounded-full bg-slate-600" style="transition:background 0.3s"></span>
+        </div>
+      </div>
+      <div class="stream-box log-mono" id="stream-box" style="height:260px">
+        <span class="s-line INFO" style="color:#475569;font-style:italic">Waiting for stream to start…</span>
+      </div>
+      <div class="mt-2 grid grid-cols-3 gap-2 text-center">
+        <div class="rounded-lg py-1.5" style="background:rgba(52,211,153,0.06);border:1px solid rgba(52,211,153,0.15)">
+          <div class="text-sm font-bold text-emerald-400" id="cnt-info">0</div>
+          <div class="text-[10px] text-slate-500">INFO</div>
+        </div>
+        <div class="rounded-lg py-1.5" style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15)">
+          <div class="text-sm font-bold text-amber-400" id="cnt-warn">0</div>
+          <div class="text-[10px] text-slate-500">WARN</div>
+        </div>
+        <div class="rounded-lg py-1.5" style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15)">
+          <div class="text-sm font-bold text-red-400" id="cnt-error">0</div>
+          <div class="text-[10px] text-slate-500">ERROR</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts panel -->
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-sm font-bold">Extracted Metrics</span>
+        <span class="text-[11px] text-slate-500 italic">Zero metrics agents required</span>
+      </div>
+      <div class="mb-3">
+        <div class="text-xs text-slate-400 mb-1.5">ERROR count by service</div>
+        <div class="chart-wrap">
+          <canvas id="svc-chart" style="width:100%;height:72px;display:block"></canvas>
+        </div>
+      </div>
+      <div>
+        <div class="text-xs text-slate-400 mb-1.5">Response time distribution (ms)</div>
+        <div class="chart-wrap">
+          <canvas id="hist-chart" style="width:100%;height:72px;display:block"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Extraction rules -->
+  <div class="glass-card p-4 mb-4">
+    <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Active Extraction Rules</div>
+    <div class="flex flex-wrap gap-5">
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" id="rule-level" checked class="checkbox checkbox-xs checkbox-primary" />
+        <span class="text-xs text-slate-300"><code class="text-indigo-400">level</code> → INFO / WARN / ERROR counters</span>
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" id="rule-dur" checked class="checkbox checkbox-xs checkbox-primary" />
+        <span class="text-xs text-slate-300"><code class="text-indigo-400">duration_ms</code> → response time histogram</span>
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" id="rule-svc" checked class="checkbox checkbox-xs checkbox-primary" />
+        <span class="text-xs text-slate-300"><code class="text-indigo-400">service</code> → errors-by-service chart</span>
+      </label>
+    </div>
+    <div id="plain-warn" class="hidden mt-3 text-xs text-amber-400">
+      ⚠️ Plain text mode: regex extraction is ~25× slower and misses ~15% of duration values due to inconsistent message formats.
+    </div>
+  </div>
+
+  <!-- Insight -->
+  <div class="card p-4">
+    <div class="text-sm font-bold mb-2">What's happening algorithmically</div>
+    <div class="text-sm text-slate-400">Every log line passes through the active extraction rules in sequence. In structured mode each rule is a single field lookup on the parsed JSON object — O(1) per rule per line. In plain text mode each rule requires a regex scan of the entire line string — O(line_length × pattern_complexity). At 30 lines/second with 3 active rules, structured mode executes 90 field lookups/second. Plain text executes 90 regex evaluations/second, each potentially backtracking across the full string. The gap widens at firehose speed — JSON parsing stays flat while regex CPU climbs steeply.</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCENARIO 3: INCIDENT CORRELATION
+══════════════════════════════════════════ -->
+<div id="s3" style="display:none" class="px-4 md:px-8 pb-10 max-w-7xl mx-auto">
+
+  <div class="glass-card p-4 mb-4">
+    <div class="flex flex-wrap items-center gap-3">
+      <p class="text-sm text-slate-400 flex-1 min-w-[180px]">A 3-service incident unfolds over 2.5 minutes. <strong class="text-slate-300">Grep mode</strong> searches for "error". <strong class="text-slate-300">Structured mode</strong> filters by <code class="text-indigo-400">traceId=req_c7f2a1b</code> to reconstruct the causal chain.</p>
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="imode-grep" onclick="setIncidentMode('grep')">🔍 Grep Mode</button>
+        <button class="mode-btn" id="imode-struct" onclick="setIncidentMode('structured')">🎯 Structured Mode</button>
+      </div>
+      <button id="run-inc-btn" onclick="runIncident()" class="run-btn btn btn-sm bg-indigo-600 hover:bg-indigo-500 text-white border-0">▶ Run Analysis</button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+    <!-- Log view -->
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-bold" id="inc-log-title">All Logs — 20 events, 3 services</span>
+        <span class="text-xs text-slate-500" id="inc-match-count">Run analysis to filter</span>
+      </div>
+      <div class="stream-box log-mono" id="inc-box" style="height:310px"></div>
+      <div class="mt-2 flex justify-between items-center text-xs">
+        <span class="text-slate-500" id="inc-mode-label">—</span>
+        <span class="font-mono font-bold text-indigo-400" id="inc-ttrc">TTRC: —</span>
+      </div>
+    </div>
+
+    <!-- Timeline canvas -->
+    <div class="card p-4">
+      <div class="text-sm font-bold mb-2">Causal Chain Timeline</div>
+      <div class="chart-wrap" style="padding:0">
+        <canvas id="tl-canvas" style="width:100%;height:230px;display:block;border-radius:0.75rem"></canvas>
+      </div>
+      <div class="mt-2 flex flex-wrap gap-3 text-[11px] text-slate-500">
+        <span>⬤ <span class="text-slate-400">INFO</span></span>
+        <span>⬤ <span class="text-amber-400">WARN</span></span>
+        <span>⬤ <span class="text-red-400">ERROR</span></span>
+        <span>⬤ <span class="text-indigo-400">Traced (req_c7f2a1b)</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Benchmark -->
+  <div class="glass-card p-5 mb-4">
+    <h3 class="text-sm font-bold mb-4">Time-to-Root-Cause (TTRC) Benchmark</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <div class="flex justify-between text-xs mb-1">
+          <span class="text-slate-400">🔍 Grep mode — keyword "error"</span>
+          <span id="grep-ttrc" class="font-mono text-red-400 font-bold">—</span>
+        </div>
+        <div class="h-2 rounded-full bg-slate-800/50 overflow-hidden"><div id="grep-bar" class="h-full bg-red-500/60 rounded-full" style="width:0%;transition:width 0.7s ease 0.1s"></div></div>
+        <div id="grep-desc" class="text-[11px] text-slate-500 mt-1"></div>
+      </div>
+      <div>
+        <div class="flex justify-between text-xs mb-1">
+          <span class="text-slate-400">🎯 Structured mode — traceId filter</span>
+          <span id="struct-ttrc" class="font-mono text-emerald-400 font-bold">—</span>
+        </div>
+        <div class="h-2 rounded-full bg-slate-800/50 overflow-hidden"><div id="struct-bar" class="h-full bg-emerald-500/60 rounded-full" style="width:0%;transition:width 0.7s ease 0.2s"></div></div>
+        <div id="struct-desc" class="text-[11px] text-slate-500 mt-1"></div>
+      </div>
+    </div>
+    <div class="mt-4 p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-sm text-slate-300" id="inc-insight" style="display:none">—</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     FURTHER READING
+══════════════════════════════════════════ -->
+<section class="px-4 md:px-8 pb-10 max-w-7xl mx-auto">
+  <div class="card p-6">
+    <h2 class="text-base font-bold mb-4">📚 Further Reading</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <a href="https://medium.com/observability-is-engineering/clustering-algorithms-in-observability-0c2d31e4dbca" target="_blank" class="block p-4 rounded-xl border border-slate-700/40 hover:border-indigo-500/40 transition-colors no-underline">
+        <div class="text-xs text-indigo-400 font-semibold mb-1">Medium · Observability is Engineering</div>
+        <div class="text-sm font-semibold mb-1">Clustering Algorithms in Observability</div>
+        <div class="text-xs text-slate-400">KMeans vs DBSCAN — when to use which algorithm in production observability pipelines</div>
+      </a>
+      <a href="https://medium.com/observability-is-engineering/correlating-system-log-lines-with-grouping-and-k-means-in-c-12ead84c80a4" target="_blank" class="block p-4 rounded-xl border border-slate-700/40 hover:border-indigo-500/40 transition-colors no-underline">
+        <div class="text-xs text-indigo-400 font-semibold mb-1">Medium · Observability is Engineering</div>
+        <div class="text-sm font-semibold mb-1">Correlating System Log Lines with K-Means in C#</div>
+        <div class="text-xs text-slate-400">Turning raw log streams into machine-readable clusters using grouping and K-Means</div>
+      </a>
+    </div>
+  </div>
+</section>
 
 <script>
-  function getPreferredTheme() { return localStorage.getItem('de-theme') || 'dark'; }
-  function applyTheme(theme) { document.documentElement.classList.toggle('dark', theme === 'dark'); localStorage.setItem('de-theme', theme); }
-  function toggleTheme() { applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark'); var btn = document.getElementById('nav-theme-toggle'); if (btn) btn.textContent = document.documentElement.classList.contains('dark') ? '🌙' : '☀️'; }
-  applyTheme(getPreferredTheme());
+/* ── Theme ── */
+function getPreferredTheme(){return localStorage.getItem('de-theme')||'dark';}
+function applyTheme(t){
+  document.documentElement.classList.toggle('dark',t==='dark');
+  localStorage.setItem('de-theme',t);
+  var pd=document.getElementById('prism-dark'),pl=document.getElementById('prism-light');
+  if(pd)pd.disabled=(t!=='dark'); if(pl)pl.disabled=(t==='dark');
+}
+function toggleTheme(){
+  var d=document.documentElement.classList.contains('dark');
+  applyTheme(d?'light':'dark');
+  var btn=document.getElementById('nav-theme-toggle');
+  if(btn)btn.textContent=d?'☀️':'🌙';
+  drawSvcChart(); drawHistChart();
+  if(lastIncMode) drawTimeline(lastIncMode);
+}
+applyTheme(getPreferredTheme());
+
+/* ── Scenario switching ── */
+var activeS=1;
+function switchScenario(n){
+  if(activeS===2&&isStreaming) stopStream();
+  [1,2,3].forEach(function(i){
+    document.getElementById('s'+i).style.display=i===n?'':'none';
+    var t=document.getElementById('stab-'+i);
+    if(t){t.classList.toggle('active',i===n);}
+  });
+  activeS=n;
+  if(n===1) renderAllPanels();
+  if(n===3) renderIncidentLogs();
+}
+
+/* ── Collapsible code ── */
+function toggleCode(id){
+  var el=document.getElementById(id),ar=document.getElementById(id+'-arrow');
+  var open=el.style.display==='block';
+  el.style.display=open?'none':'block';
+  if(ar)ar.textContent=open?'▶':'▼';
+  if(!open&&window.Prism)Prism.highlightAllUnder(el);
+}
+
+/* ════════════════════════════════════════
+   SCENARIO 1 — Log Structure Comparator
+════════════════════════════════════════ */
+var LOG_EVENTS=[
+  {
+    plain:'2026-03-26 14:00:02 INFO  HTTP GET /api/checkout 200 67ms from=10.0.1.45',
+    kv:   'ts=2026-03-26T14:00:02Z level=INFO service=api method=GET path=/api/checkout status=200 duration_ms=67 remote_ip=10.0.1.45',
+    json: '{"ts":"2026-03-26T14:00:02Z","level":"INFO","service":"api","method":"GET","path":"/api/checkout","status":200,"duration_ms":67,"remote_ip":"10.0.1.45"}',
+    data: {level:'INFO',service:'api',method:'GET',path:'/api/checkout',status:200,duration_ms:67}
+  },
+  {
+    plain:'2026-03-26 14:00:33 WARN  Database query slow: SELECT * FROM orders [1243ms]',
+    kv:   'ts=2026-03-26T14:00:33Z level=WARN service=db operation=SELECT table=orders duration_ms=1243 threshold_ms=1000',
+    json: '{"ts":"2026-03-26T14:00:33Z","level":"WARN","service":"db","operation":"SELECT","table":"orders","duration_ms":1243,"threshold_ms":1000}',
+    data: {level:'WARN',service:'db',duration_ms:1243}
+  },
+  {
+    plain:'2026-03-26 14:01:15 ERROR Authentication failed user=johndoe ip=192.168.1.105 attempts=3',
+    kv:   'ts=2026-03-26T14:01:15Z level=ERROR service=auth event=login_failed user=johndoe ip=192.168.1.105 attempts=3',
+    json: '{"ts":"2026-03-26T14:01:15Z","level":"ERROR","service":"auth","event":"login_failed","user":"johndoe","ip":"192.168.1.105","attempts":3}',
+    data: {level:'ERROR',service:'auth',event:'login_failed',attempts:3}
+  },
+  {
+    plain:'2026-03-26 14:01:48 INFO  Background job export_orders completed 8432ms records=15420',
+    kv:   'ts=2026-03-26T14:01:48Z level=INFO service=jobs job=export_orders status=completed duration_ms=8432 records=15420',
+    json: '{"ts":"2026-03-26T14:01:48Z","level":"INFO","service":"jobs","job":"export_orders","status":"completed","duration_ms":8432,"records":15420}',
+    data: {level:'INFO',service:'jobs',job:'export_orders',duration_ms:8432,records:15420}
+  },
+  {
+    plain:'2026-03-26 14:02:03 ERROR NullPointerException at OrderService.java:234 user_id=user_8821',
+    kv:   'ts=2026-03-26T14:02:03Z level=ERROR service=api error=NullPointerException file=OrderService.java line=234 user_id=user_8821',
+    json: '{"ts":"2026-03-26T14:02:03Z","level":"ERROR","service":"api","error":"NullPointerException","file":"OrderService.java","line":234,"user_id":"user_8821"}',
+    data: {level:'ERROR',service:'api',error:'NullPointerException'}
+  }
+];
+
+var QUERIES=[
+  {
+    label:'Requests slower than 500 ms',
+    test:function(d){return d.duration_ms!==undefined&&d.duration_ms>500;},
+    matchIdx:[1,3],
+    plainMs:8400, kvMs:2100, jsonMs:340,
+    plainFP:1, kvFP:0, jsonFP:0,
+    plainNote:'Regex tries bracketed [Nms] and trailing Nms — "attempts=3" can shadow a mismatched group; false positive on event 3.',
+    kvNote:'Split on spaces, find duration_ms=N key — consistent; zero false positives.',
+    jsonNote:'JSON.parse → obj.duration_ms > 500 — native integer comparison; 25× faster than regex.',
+    insight:'JSON is 25× faster than plain-text regex for numeric field comparisons. The regex also produced a false positive: the "3" in "attempts=3" matched a looser pattern variant. Structured formats enforce field boundaries, eliminating that class of bug entirely.'
+  },
+  {
+    label:'Errors from auth service only',
+    test:function(d){return d.level==='ERROR'&&d.service==='auth';},
+    matchIdx:[2],
+    plainMs:9200, kvMs:1900, jsonMs:290,
+    plainFP:0, kvFP:0, jsonFP:0,
+    plainNote:'Must AND two regex patterns: "ERROR" at word boundary AND "auth" anywhere in line — brittle if "auth" appears in a path or message.',
+    kvNote:'Two key lookups: level=ERROR AND service=auth — explicit and reliable.',
+    jsonNote:'obj.level === "ERROR" && obj.service === "auth" — type-safe; query complexity stays O(1) regardless of how many AND conditions you add.',
+    insight:'For multi-field AND filters, regex complexity grows multiplicatively — each additional condition adds a capture group and increases backtracking risk. JSON query complexity stays flat: add a field, add one equality check. At 5 fields the regex is unmaintainable; the JSON filter is still a single readable line.'
+  },
+  {
+    label:'Checkout requests with HTTP 200',
+    test:function(d){return d.path==='/api/checkout'&&d.status===200;},
+    matchIdx:[0],
+    plainMs:7800, kvMs:1800, jsonMs:280,
+    plainFP:0, kvFP:0, jsonFP:0,
+    plainNote:'Works for this exact message template — "200" is positional. If an error message mentions "200 records processed", the pattern matches incorrectly.',
+    kvNote:'path=/api/checkout AND status=200 — field separation prevents value collision.',
+    jsonNote:'Path is a string, status is an integer — types prevent "200" appearing in a message field from matching status 200.',
+    insight:'Positional matching in plain text is a latent bug. "200" is just a string — it can appear in record counts, error messages, or process IDs. JSON\'s typed schema makes status 200 always an integer in a field named "status". Changing message wording never breaks the query.'
+  },
+  {
+    label:'All ERROR level events',
+    test:function(d){return d.level==='ERROR';},
+    matchIdx:[2,4],
+    plainMs:6200, kvMs:1700, jsonMs:260,
+    plainFP:1, kvFP:0, jsonFP:0,
+    plainNote:'"ERROR" matched at any position — "ANOTHER_ERROR_TYPE" or "404 ERROR" in different column positions can produce false positives.',
+    kvNote:'level=ERROR — exact key-value match; field is always the same token.',
+    jsonNote:'obj.level === "ERROR" — strict string equality on a named field.',
+    insight:'Even the simplest query exposes the gap. "ERROR" in plain text can appear at level position, inside a message, or as part of an error type string. key=value and JSON constrain it to a named field with strict equality, eliminating positional false positives with zero extra cost.'
+  },
+  {
+    label:'Jobs taking more than 5 seconds',
+    test:function(d){return d.job!==undefined&&d.duration_ms>5000;},
+    matchIdx:[3],
+    plainMs:10100, kvMs:2200, jsonMs:380,
+    plainFP:0, kvFP:0, jsonFP:0,
+    plainNote:'Regex is hardcoded to "Background job" message text — if a developer renames the log message, the query silently returns zero results forever.',
+    kvNote:'job=* AND duration_ms>5000 — field names are the contract, not message text.',
+    jsonNote:'obj.job && obj.duration_ms > 5000 — purely data-driven; immune to message wording changes.',
+    insight:'The plain text query here is a ticking clock. It works until the day someone rewrites "Background job" to "Async task" or "Worker". The query silently returns zero results and nobody notices until an SLO is breached. Structured log queries are contracts on field names, not on human-readable prose.'
+  }
+];
+
+var s1SearchDone=false;
+
+function renderAllPanels(){
+  renderPanel('plain-panel','plain');
+  renderPanel('kv-panel','kv');
+  renderPanel('json-panel','json');
+  s1SearchDone=false;
+  document.getElementById('s1-comparison').style.display='none';
+  ['plain','kv','json'].forEach(function(f){
+    document.getElementById(f+'-result').textContent='—';
+    document.getElementById(f+'-stats').innerHTML='<div class="text-xs text-slate-500 italic">Run a search to see metrics</div>';
+  });
+}
+
+function renderPanel(panelId, fmt, matchIdx, highlight){
+  var panel=document.getElementById(panelId);
+  if(!panel)return;
+  panel.innerHTML='';
+  LOG_EVENTS.forEach(function(ev,i){
+    var span=document.createElement('span');
+    span.className='log-line';
+    var txt=ev[fmt];
+    if(matchIdx&&matchIdx.indexOf(i)!==-1){
+      span.classList.add('matched');
+      if(highlight&&highlight[fmt]){
+        txt=txt.replace(highlight[fmt],function(m){return '<span class="match-hl">'+m+'</span>';});
+      }
+      span.innerHTML=txt;
+    } else {
+      span.textContent=txt;
+    }
+    panel.appendChild(span);
+  });
+}
+
+function resetSearch(){
+  renderAllPanels();
+  document.getElementById('run-search-btn').textContent='▶ Run Search';
+}
+
+function runSearch(){
+  var qIdx=parseInt(document.getElementById('query-select').value,10);
+  var q=QUERIES[qIdx];
+  var btn=document.getElementById('run-search-btn');
+  btn.textContent='Running…';
+  btn.disabled=true;
+  setTimeout(function(){
+    // Highlight panels
+    renderPanel('plain-panel','plain',q.matchIdx,null);
+    renderPanel('kv-panel','kv',q.matchIdx,null);
+    renderPanel('json-panel','json',q.matchIdx,null);
+
+    var matched=q.matchIdx.length;
+
+    // Badges
+    function badge(fmt, ms, fp){
+      var col=fmt==='plain'?'text-red-400':fmt==='kv'?'text-amber-400':'text-emerald-400';
+      document.getElementById(fmt+'-result').innerHTML='<span class="'+col+' font-bold font-mono">'+matched+' match'+(matched!==1?'es':'')+(fp?' (+'+fp+' FP)':'')+'</span>';
+    }
+    badge('plain',q.plainMs,q.plainFP);
+    badge('kv',q.kvMs,q.kvFP);
+    badge('json',q.jsonMs,q.jsonFP);
+
+    // Stats cards
+    function stats(fmt,ms,note,fp){
+      var el=document.getElementById(fmt+'-stats');
+      var fpHtml=fp?'<div class="text-[11px] text-red-400 mt-1">⚠ '+fp+' false positive'+(fp>1?'s':'')+'</div>':'<div class="text-[11px] text-emerald-400 mt-1">✓ No false positives</div>';
+      el.innerHTML='<div class="text-[11px] text-slate-400">'+note+'</div>'+fpHtml;
+    }
+    stats('plain',q.plainMs,q.plainNote,q.plainFP);
+    stats('kv',q.kvMs,q.kvNote,q.kvFP);
+    stats('json',q.jsonMs,q.jsonNote,q.jsonFP);
+
+    // Performance bars
+    document.getElementById('s1-comparison').style.display='';
+    var maxMs=q.plainMs;
+    setTimeout(function(){
+      document.getElementById('plain-ms').textContent=q.plainMs.toLocaleString()+' ms';
+      document.getElementById('kv-ms').textContent=q.kvMs.toLocaleString()+' ms';
+      document.getElementById('json-ms').textContent=q.jsonMs.toLocaleString()+' ms';
+      document.getElementById('plain-pbar').style.width='100%';
+      document.getElementById('kv-pbar').style.width=Math.round(q.kvMs/maxMs*100)+'%';
+      document.getElementById('json-pbar').style.width=Math.round(q.jsonMs/maxMs*100)+'%';
+      document.getElementById('plain-sn').textContent=q.plainNote;
+      document.getElementById('kv-sn').textContent=q.kvNote;
+      document.getElementById('json-sn').textContent=q.jsonNote;
+      document.getElementById('s1-insight').textContent=q.insight;
+    },50);
+
+    btn.textContent='▶ Run Search';
+    btn.disabled=false;
+    s1SearchDone=true;
+  },300);
+}
+
+/* ════════════════════════════════════════
+   SCENARIO 2 — Live Metric Extractor
+════════════════════════════════════════ */
+var streamInterval=null, isStreaming=false, logFmt='structured';
+var sCntInfo=0, sCntWarn=0, sCntError=0, sTotalLines=0;
+var svcErrors={api:0,auth:0,db:0,jobs:0};
+var durBuckets=[0,0,0,0,0,0]; // <50,50-200,200-500,500-1K,1K-3K,>3K
+var MAX_STREAM_LINES=200;
+
+function rnd(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+function nowTs(){var d=new Date();return d.toISOString().substr(11,12)+'Z';}
+
+var SVCS=['api','auth','db','jobs'];
+var PATHS=['/api/products','/api/orders','/api/checkout','/api/users'];
+var LEVELS=['INFO','INFO','INFO','INFO','WARN','WARN','ERROR'];
+
+function genLine(){
+  var svc=SVCS[rnd(0,3)];
+  var lvl=LEVELS[rnd(0,LEVELS.length-1)];
+  // bias errors to auth and db
+  if(lvl==='ERROR'&&Math.random()<0.6) svc=(Math.random()<0.5)?'auth':'db';
+  var dur=rnd(5,200);
+  if(lvl==='WARN') dur=rnd(300,1200);
+  if(lvl==='ERROR') dur=rnd(800,5500);
+  var ts=nowTs();
+  if(logFmt==='structured'){
+    var obj={ts:ts,level:lvl,service:svc};
+    if(svc==='api'){obj.method='GET';obj.path=PATHS[rnd(0,3)];obj.status=lvl==='ERROR'?503:200;obj.duration_ms=dur;}
+    else if(svc==='auth'){obj.event=lvl==='ERROR'?'login_failed':'token_validated';obj.duration_ms=dur;}
+    else if(svc==='db'){obj.operation='SELECT';obj.table=['orders','sessions','users'][rnd(0,2)];obj.duration_ms=dur;}
+    else{obj.job='export_orders';obj.status=lvl==='ERROR'?'failed':'running';obj.duration_ms=dur;}
+    return {lvl:lvl,svc:svc,dur:dur,text:JSON.stringify(obj)};
+  } else {
+    var msg='';
+    if(svc==='api') msg=ts+' '+lvl+'  HTTP GET '+PATHS[rnd(0,3)]+' '+(lvl==='ERROR'?503:200)+' '+dur+'ms';
+    else if(svc==='auth') msg=ts+' '+lvl+'  '+(lvl==='ERROR'?'Auth failed for user_'+rnd(100,999)+' attempts='+rnd(1,5):('Token validated in '+dur+'ms'));
+    else if(svc==='db') msg=ts+' '+lvl+'  DB query '+['orders','sessions','users'][rnd(0,2)]+' took '+dur+'ms'+(lvl==='ERROR'?' [pool exhausted]':'');
+    else msg=ts+' '+lvl+'  Job export_orders '+(lvl==='ERROR'?'failed after':'completed in')+' '+dur+'ms';
+    return {lvl:lvl,svc:svc,dur:dur,text:msg};
+  }
+}
+
+function applyLine(line){
+  var ruleLevel=document.getElementById('rule-level').checked;
+  var ruleDur=document.getElementById('rule-dur').checked;
+  var ruleSvc=document.getElementById('rule-svc').checked;
+  sTotalLines++;
+  if(ruleLevel){
+    if(line.lvl==='INFO'){sCntInfo++; document.getElementById('cnt-info').textContent=sCntInfo;}
+    else if(line.lvl==='WARN'){sCntWarn++; document.getElementById('cnt-warn').textContent=sCntWarn;}
+    else{sCntError++; document.getElementById('cnt-error').textContent=sCntError;}
+  }
+  if(ruleSvc&&line.lvl==='ERROR'){
+    svcErrors[line.svc]=(svcErrors[line.svc]||0)+1;
+    drawSvcChart();
+  }
+  if(ruleDur&&line.dur){
+    var d=line.dur;
+    var bi=d<50?0:d<200?1:d<500?2:d<1000?3:d<3000?4:5;
+    durBuckets[bi]++;
+    drawHistChart();
+  }
+  document.getElementById('stream-counter').textContent=sTotalLines+' lines';
+}
+
+function addStreamLine(line){
+  var box=document.getElementById('stream-box');
+  var span=document.createElement('span');
+  span.className='s-line '+line.lvl+' log-mono';
+  span.style.fontSize='0.68rem';
+  span.textContent=line.text;
+  box.appendChild(span);
+  // Keep last MAX lines
+  while(box.children.length>MAX_STREAM_LINES) box.removeChild(box.firstChild);
+  box.scrollTop=box.scrollHeight;
+}
+
+function toggleStream(){
+  if(isStreaming) stopStream(); else startStream();
+}
+function startStream(){
+  if(isStreaming) return;
+  isStreaming=true;
+  document.getElementById('stream-btn').textContent='⏸ Pause';
+  document.getElementById('stream-dot').style.background='#34d399';
+  var speed=parseInt(document.getElementById('stream-speed').value,10);
+  streamInterval=setInterval(function(){
+    var line=genLine();
+    addStreamLine(line);
+    applyLine(line);
+  },speed);
+}
+function stopStream(){
+  isStreaming=false;
+  if(streamInterval){clearInterval(streamInterval);streamInterval=null;}
+  document.getElementById('stream-btn').textContent='▶ Start Stream';
+  document.getElementById('stream-dot').style.background='#64748b';
+}
+function resetStream(){
+  stopStream();
+  sCntInfo=0;sCntWarn=0;sCntError=0;sTotalLines=0;
+  svcErrors={api:0,auth:0,db:0,jobs:0};
+  durBuckets=[0,0,0,0,0,0];
+  document.getElementById('cnt-info').textContent='0';
+  document.getElementById('cnt-warn').textContent='0';
+  document.getElementById('cnt-error').textContent='0';
+  document.getElementById('stream-counter').textContent='0 lines';
+  document.getElementById('stream-box').innerHTML='<span class="s-line INFO" style="color:#475569;font-style:italic">Waiting for stream to start…</span>';
+  drawSvcChart(); drawHistChart();
+}
+function setLogFmt(f){
+  logFmt=f;
+  document.getElementById('fmt-struct').classList.toggle('active',f==='structured');
+  document.getElementById('fmt-plain').classList.toggle('active',f==='plain');
+  document.getElementById('plain-warn').classList.toggle('hidden',f!=='plain');
+}
+
+function drawSvcChart(){
+  var canvas=document.getElementById('svc-chart');
+  if(!canvas)return;
+  var dpr=window.devicePixelRatio||1;
+  var w=canvas.offsetWidth||300;
+  var h=72;
+  canvas.width=w*dpr; canvas.height=h*dpr;
+  canvas.style.width=w+'px'; canvas.style.height=h+'px';
+  var ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,w,h);
+  var isDark=document.documentElement.classList.contains('dark');
+  var tc=isDark?'#64748b':'#94a3b8';
+  var svcs=['api','auth','db','jobs'];
+  var cols=['#6366f1','#f472b6','#f59e0b','#34d399'];
+  var counts=svcs.map(function(s){return svcErrors[s]||0;});
+  var maxV=Math.max.apply(null,counts.concat([1]));
+  var bw=Math.floor((w-40)/4)-6;
+  svcs.forEach(function(svc,i){
+    var x=20+i*((w-40)/4)+3;
+    var bh=(counts[i]/maxV)*(h-22);
+    var y=h-bh-18;
+    ctx.fillStyle=cols[i]+'88';
+    if(bh>0){ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,bw,bh,3):null;ctx.fillRect(x,y,bw,bh);}
+    ctx.fillStyle=tc; ctx.font='9px monospace'; ctx.textAlign='center';
+    ctx.fillText(svc,x+bw/2,h-4);
+    if(counts[i]>0){ctx.fillStyle=cols[i]; ctx.fillText(counts[i],x+bw/2,Math.max(y-3,10));}
+  });
+}
+
+function drawHistChart(){
+  var canvas=document.getElementById('hist-chart');
+  if(!canvas)return;
+  var dpr=window.devicePixelRatio||1;
+  var w=canvas.offsetWidth||300;
+  var h=72;
+  canvas.width=w*dpr; canvas.height=h*dpr;
+  canvas.style.width=w+'px'; canvas.style.height=h+'px';
+  var ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,w,h);
+  var isDark=document.documentElement.classList.contains('dark');
+  var tc=isDark?'#64748b':'#94a3b8';
+  var labels=['<50','50-200','200-500','500-1K','1K-3K','>3K'];
+  var cols=['#34d399','#6ee7b7','#f59e0b','#fb923c','#ef4444','#dc2626'];
+  var maxV=Math.max.apply(null,durBuckets.concat([1]));
+  var bw=Math.floor((w-20)/6)-4;
+  durBuckets.forEach(function(cnt,i){
+    var x=10+i*((w-20)/6)+2;
+    var bh=(cnt/maxV)*(h-22);
+    var y=h-bh-18;
+    ctx.fillStyle=cols[i]+'88';
+    if(bh>0) ctx.fillRect(x,y,bw,bh);
+    ctx.fillStyle=tc; ctx.font='8px monospace'; ctx.textAlign='center';
+    ctx.fillText(labels[i],x+bw/2,h-4);
+  });
+}
+
+/* ════════════════════════════════════════
+   SCENARIO 3 — Incident Correlation
+════════════════════════════════════════ */
+var INCIDENT=[
+  {rt:0,  ts:'14:00:00',level:'INFO', svc:'db',   msg:'SELECT users: 2ms connections=3/10',         traceId:null},
+  {rt:5,  ts:'14:00:05',level:'INFO', svc:'auth', msg:'token_validated user=u001: 3ms',              traceId:'req_a1b2c3'},
+  {rt:7,  ts:'14:00:07',level:'INFO', svc:'api',  msg:'GET /api/products 200: 45ms',                traceId:'req_a1b2c3'},
+  {rt:18, ts:'14:00:18',level:'INFO', svc:'auth', msg:'token_validated user=u002: 4ms',              traceId:'req_c7f2a1b'},
+  {rt:20, ts:'14:00:20',level:'INFO', svc:'api',  msg:'GET /api/checkout 200: 67ms',                traceId:'req_c7f2a1b', traced:true},
+  {rt:33, ts:'14:00:33',level:'INFO', svc:'db',   msg:'SELECT orders: 8ms connections=4/10',         traceId:null},
+  {rt:48, ts:'14:00:48',level:'INFO', svc:'api',  msg:'POST /api/orders 201: 123ms',               traceId:'req_d4e5f6'},
+  {rt:65, ts:'14:01:05',level:'WARN', svc:'db',   msg:'SELECT sessions: 450ms connections=8/10 ⚠',  traceId:null},
+  {rt:78, ts:'14:01:18',level:'WARN', svc:'db',   msg:'SELECT sessions: 892ms connections=9/10 ⚠ near_limit',traceId:null},
+  {rt:80, ts:'14:01:20',level:'WARN', svc:'auth', msg:'token_validated: 890ms (db_slow)',            traceId:'req_g7h8i9'},
+  {rt:83, ts:'14:01:23',level:'WARN', svc:'api',  msg:'GET /api/products 200: 2340ms (slow)',       traceId:'req_g7h8i9'},
+  {rt:90, ts:'14:01:30',level:'ERROR',svc:'db',   msg:'connection_pool_exhausted 10/10 waiting=15', traceId:null},
+  {rt:95, ts:'14:01:35',level:'ERROR',svc:'db',   msg:'query timeout: pool_timeout wait_ms=5000',   traceId:null},
+  {rt:106,ts:'14:01:46',level:'WARN', svc:'auth', msg:'token_validated: 1240ms (db_slow)',           traceId:'req_c7f2a1b', traced:true},
+  {rt:115,ts:'14:01:55',level:'ERROR',svc:'auth', msg:'db_connection_failed pool=auth_db active=10/10',traceId:null},
+  {rt:120,ts:'14:02:00',level:'ERROR',svc:'db',   msg:'connection_pool_exhausted 10/10 waiting=47', traceId:null},
+  {rt:128,ts:'14:02:08',level:'ERROR',svc:'db',   msg:'query timeout: pool_timeout wait_ms=5000',   traceId:null},
+  {rt:130,ts:'14:02:10',level:'ERROR',svc:'auth', msg:'token_validation_failed user=u002 error=db_unavailable',traceId:'req_c7f2a1b', traced:true},
+  {rt:135,ts:'14:02:15',level:'ERROR',svc:'api',  msg:'GET /api/checkout 503 error=auth_unavailable',traceId:'req_c7f2a1b', traced:true},
+  {rt:140,ts:'14:02:20',level:'ERROR',svc:'api',  msg:'POST /api/orders 503 error=upstream_timeout',traceId:'req_j1k2l3'}
+];
+
+var incidentMode='grep', lastIncMode=null;
+
+function setIncidentMode(m){
+  incidentMode=m;
+  document.getElementById('imode-grep').classList.toggle('active',m==='grep');
+  document.getElementById('imode-struct').classList.toggle('active',m==='structured');
+}
+
+function renderIncidentLogs(){
+  var box=document.getElementById('inc-box');
+  box.innerHTML='';
+  INCIDENT.forEach(function(ev){
+    var span=document.createElement('span');
+    span.className='inc-line '+ev.level+' log-mono';
+    span.style.fontSize='0.68rem';
+    var svcCol=ev.svc==='api'?'#818cf8':ev.svc==='auth'?'#f472b6':'#f59e0b';
+    span.innerHTML='<span style="color:'+svcCol+';font-weight:600">'+ev.svc.padEnd(4)+'</span> <span style="color:#64748b">'+ev.ts+'</span> '+ev.msg;
+    box.appendChild(span);
+  });
+}
+
+function runIncident(){
+  var btn=document.getElementById('run-inc-btn');
+  btn.textContent='Running…'; btn.disabled=true;
+  setTimeout(function(){
+    var box=document.getElementById('inc-box');
+    box.innerHTML='';
+    var mode=incidentMode;
+    var matches, label, ttrc, modeLabel;
+
+    if(mode==='grep'){
+      matches=INCIDENT.filter(function(e){
+        return e.level==='ERROR'||e.msg.toLowerCase().indexOf('error')!==-1;
+      });
+      label='Grep "error" — '+matches.length+' matches across all services';
+      ttrc='~38 min engineer time';
+      modeLabel='Manual correlation required: '+matches.length+' error lines from '+countSvcs(matches)+' services, no shared context';
+    } else {
+      matches=INCIDENT.filter(function(e){return e.traced;});
+      label='traceId=req_c7f2a1b — '+matches.length+' correlated events';
+      ttrc='~12 seconds';
+      modeLabel='Complete causal chain in '+matches.length+' lines: checkout start → auth degradation → DB exhaustion → 503';
+    }
+
+    INCIDENT.forEach(function(ev){
+      var span=document.createElement('span');
+      var isMatch=matches.indexOf(ev)!==-1;
+      var cls='inc-line '+ev.level+' log-mono';
+      if(isMatch) cls+=(mode==='grep')?' grep-hit':' traced';
+      span.className=cls;
+      span.style.fontSize='0.68rem';
+      if(mode!=='grep'&&!isMatch) span.style.opacity='0.35';
+      var svcCol=ev.svc==='api'?'#818cf8':ev.svc==='auth'?'#f472b6':'#f59e0b';
+      span.innerHTML='<span style="color:'+svcCol+';font-weight:600">'+ev.svc.padEnd(4)+'</span> <span style="color:#64748b">'+ev.ts+'</span> '+ev.msg+(ev.traced?' <span style="color:#6366f1;font-size:0.65rem">[traceId=req_c7f2a1b]</span>':'');
+      box.appendChild(span);
+    });
+
+    document.getElementById('inc-log-title').textContent=label;
+    document.getElementById('inc-match-count').textContent=matches.length+' highlighted';
+    document.getElementById('inc-mode-label').textContent=modeLabel;
+    document.getElementById('inc-ttrc').textContent='TTRC: '+ttrc;
+
+    // Benchmark bars
+    document.getElementById('grep-ttrc').textContent='~38 min';
+    document.getElementById('struct-ttrc').textContent='~12 sec';
+    setTimeout(function(){
+      document.getElementById('grep-bar').style.width='100%';
+      document.getElementById('struct-bar').style.width='1%';
+    },50);
+    document.getElementById('grep-desc').textContent='9 ERROR lines from 3 services — manual reading required to identify the causal order; DB root cause buried on line 12.';
+    document.getElementById('struct-desc').textContent='4 lines, chronological, single request — causal chain reads top-to-bottom: fast checkout → slow auth → DB exhausted → 503.';
+    document.getElementById('inc-insight').style.display='';
+    document.getElementById('inc-insight').textContent='A traceId in every log line turns a 38-minute debugging session into a 12-second query. The grep search returns 9 lines from 3 services with no shared context — an engineer must mentally reconstruct the timeline. The structured filter returns exactly 4 lines that tell a complete story in chronological order. The root cause (DB connection pool exhaustion at t+90s) is invisible in grep mode because it has no traceId link to the checkout request. In structured mode it is the third line.';
+
+    // Timeline
+    lastIncMode=mode;
+    drawTimeline(mode);
+
+    btn.textContent='▶ Run Analysis'; btn.disabled=false;
+  },350);
+}
+
+function countSvcs(arr){
+  var s={};arr.forEach(function(e){s[e.svc]=1;});return Object.keys(s).length;
+}
+
+function drawTimeline(mode){
+  var canvas=document.getElementById('tl-canvas');
+  if(!canvas)return;
+  var dpr=window.devicePixelRatio||1;
+  var w=canvas.offsetWidth||400;
+  var h=230;
+  canvas.width=w*dpr; canvas.height=h*dpr;
+  canvas.style.width=w+'px'; canvas.style.height=h+'px';
+  var ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+
+  var isDark=document.documentElement.classList.contains('dark');
+  var bg=isDark?'rgba(10,10,25,0.85)':'rgba(248,250,252,0.95)';
+  var tc=isDark?'#64748b':'#94a3b8';
+  var gc=isDark?'rgba(99,102,241,0.08)':'rgba(0,0,0,0.05)';
+
+  ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
+
+  var LP=58, RP=12, TP=18, BP=28;
+  var TW=w-LP-RP, TH=h-TP-BP;
+  var laneH=TH/3;
+  var maxT=150;
+
+  var lanes=['api','auth','db'];
+  var laneColors=['#818cf8','#f472b6','#f59e0b'];
+
+  // Grid lines + lane labels
+  lanes.forEach(function(lane,i){
+    var y=TP+i*laneH+laneH/2;
+    ctx.strokeStyle=gc; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(LP,TP+i*laneH); ctx.lineTo(w-RP,TP+i*laneH); ctx.stroke();
+    ctx.fillStyle=laneColors[i]; ctx.font='bold 10px monospace'; ctx.textAlign='right';
+    ctx.fillText(lane,LP-5,y+4);
+  });
+  // Bottom lane border
+  ctx.strokeStyle=gc; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(LP,TP+TH); ctx.lineTo(w-RP,TP+TH); ctx.stroke();
+
+  // Time marks
+  [0,30,60,90,120,150].forEach(function(t){
+    var x=LP+(t/maxT)*TW;
+    ctx.fillStyle=tc; ctx.font='8px monospace'; ctx.textAlign='center';
+    ctx.fillText('t+'+(t===0?'0':t)+'s',x,h-5);
+    ctx.strokeStyle=gc; ctx.lineWidth=1;
+    ctx.setLineDash([2,3]);
+    ctx.beginPath(); ctx.moveTo(x,TP); ctx.lineTo(x,h-BP); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Plot events
+  var evColors={INFO:isDark?'rgba(100,116,139,0.5)':'rgba(148,163,184,0.5)',WARN:'#f59e0b',ERROR:'#ef4444'};
+  INCIDENT.forEach(function(ev){
+    var li=lanes.indexOf(ev.svc); if(li===-1)return;
+    var x=LP+(ev.rt/maxT)*TW;
+    var y=TP+li*laneH+laneH/2;
+    var isTraced=ev.traced;
+    var fade=mode==='structured'&&!isTraced;
+    var r=isTraced?6:3.5;
+    var col=evColors[ev.level]||evColors.INFO;
+    if(fade) col=isDark?'rgba(100,116,139,0.18)':'rgba(148,163,184,0.2)';
+
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
+    ctx.fillStyle=col; ctx.fill();
+    if(isTraced){ctx.strokeStyle='#6366f1'; ctx.lineWidth=2; ctx.stroke();}
+  });
+
+  // Causal arrows in structured mode
+  if(mode==='structured'){
+    var traced=INCIDENT.filter(function(e){return e.traced;}).sort(function(a,b){return a.rt-b.rt;});
+    ctx.strokeStyle='rgba(99,102,241,0.6)'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+    for(var i=0;i<traced.length-1;i++){
+      var a=traced[i], b=traced[i+1];
+      var ax=LP+(a.rt/maxT)*TW, ay=TP+lanes.indexOf(a.svc)*laneH+laneH/2;
+      var bx=LP+(b.rt/maxT)*TW, by=TP+lanes.indexOf(b.svc)*laneH+laneH/2;
+      ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+}
+
+/* ── Init ── */
+renderAllPanels();
+renderIncidentLogs();
+drawSvcChart();
+drawHistChart();
+window.addEventListener('resize',function(){
+  drawSvcChart(); drawHistChart();
+  if(lastIncMode) drawTimeline(lastIncMode);
+});
 </script>
 <script src="shared/nav.js"></script>
 </body>
