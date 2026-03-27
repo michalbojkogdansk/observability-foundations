@@ -356,9 +356,17 @@ for line in log_lines:
     <div class="flex items-center justify-between mb-3">
       <div>
         <div class="text-sm font-bold">Parse Cost Benchmark</div>
-        <div class="text-xs text-slate-500 mt-0.5">Measures actual μs/1k lines for JSON field lookup vs regex scan across all speed tiers</div>
+        <div class="text-xs text-slate-500 mt-0.5">JSON.parse()-once vs N regex patterns — drag the field slider to find the crossover where JSON becomes faster</div>
       </div>
       <button id="run-parse-bench-btn" onclick="runParseBench()" class="run-btn btn btn-sm bg-indigo-600 hover:bg-indigo-500 text-white border-0">▶ Run Benchmark</button>
+    </div>
+    <div class="flex items-center gap-3 mb-3 flex-wrap">
+      <label class="text-xs text-slate-400 shrink-0">Fields to extract:</label>
+      <input type="range" min="1" max="12" value="3" id="bench-fields-slider"
+        oninput="benchFieldsVal=parseInt(this.value);document.getElementById('bench-fields-label').textContent=this.value"
+        class="w-32 accent-indigo-500">
+      <span id="bench-fields-label" class="text-xs font-bold text-indigo-400 w-4">3</span>
+      <span class="text-xs text-slate-500">— JSON wins <em>after</em> the crossover point (~4–6 fields)</span>
     </div>
     <div class="chart-wrap mb-3" id="parse-bench-wrap" style="display:none">
       <canvas id="parse-bench-chart" style="width:100%;height:140px;display:block"></canvas>
@@ -559,10 +567,10 @@ var QUERIES=[
     matchIdx:[1,3],
     plainMs:8400, kvMs:2100, jsonMs:340,
     plainFP:1, kvFP:0, jsonFP:0,
-    plainNote:'Regex tries bracketed [Nms] and trailing Nms — "attempts=3" can shadow a mismatched group; false positive on event 3.',
+    plainNote:'Without field boundaries, a numeric regex like /=(\\d+)/ extracts every key=value number on the line — including "attempts=3" on Event 3 (a login failure, not a slow request). No duration field exists there at all. Structured formats query duration_ms by name: ambiguity is impossible.',
     kvNote:'Split on spaces, find duration_ms=N key — consistent; zero false positives.',
     jsonNote:'JSON.parse → obj.duration_ms > 500 — native integer comparison; 25× faster than regex.',
-    insight:'JSON is 25× faster than plain-text regex for numeric field comparisons. The regex also produced a false positive: the "3" in "attempts=3" matched a looser pattern variant. Structured formats enforce field boundaries, eliminating that class of bug entirely.'
+    insight:'The false positive lands on Event 3 — an authentication failure with "attempts=3". A plain-text regex hunting for numbers finds every numeric field on the line: duration, attempts, status codes, record counts. It cannot know which number means "slow request". Structured formats make the field name part of the query: <code>duration_ms &gt; 500</code> is unambiguous regardless of what other numbers appear on the same line. This is the correctness argument for structured logging — not just speed.'
   },
   {
     label:'Errors from auth service only',
@@ -923,6 +931,8 @@ function setLogFmt(f){
 var BENCH_TIERS = [50, 200, 600, 1600, 5000];
 var BENCH_SAMPLES = 2000; // lines per measurement
 
+var benchFieldsVal = 3;
+
 function makeSampleLines(n){
   var services=['api','auth','db','cache','worker'];
   var levels=['INFO','WARN','ERROR'];
@@ -931,35 +941,57 @@ function makeSampleLines(n){
     var svc=services[i%services.length];
     var lvl=levels[i%3===0?2:i%3===1?1:0];
     var dur=Math.floor(50+Math.random()*950);
-    // JSON line
-    lines.push({
-      json: JSON.stringify({ts:Date.now(),level:lvl,service:svc,duration_ms:dur,msg:'request completed'}),
-      plain: lvl+' ['+svc+'] request completed duration_ms='+dur+' ts='+Date.now()
-    });
+    var ip='10.0.'+(i%10)+'.'+(i%255);
+    var obj={ts:Date.now(),level:lvl,service:svc,duration_ms:dur,
+             remote_ip:ip,method:'GET',path:'/api/'+svc,
+             status:lvl==='ERROR'?503:200,thread_id:i%100,
+             request_id:'req_'+i,trace_id:'t'+i,msg:'request completed'};
+    var plain=lvl+' ['+svc+'] duration_ms='+dur+' remote_ip='+ip
+              +' method=GET path=/api/'+svc+' status='+obj.status
+              +' thread_id='+(i%100)+' request_id=req_'+i+' trace_id=t'+i+' ts='+Date.now();
+    lines.push({json:JSON.stringify(obj), plain:plain});
   }
   return lines;
 }
 
-var REGEX_LEVEL   = /^(INFO|WARN|ERROR)/;
-var REGEX_DUR     = /duration_ms=(\d+)/;
-var REGEX_SVC     = /\[([\w-]+)\]/;
+// JSON fields and matching regex patterns — same order
+var JSON_FIELDS    = ['duration_ms','level','service','status','remote_ip','method','path','thread_id','request_id','trace_id','ts','msg'];
+var REGEX_PATTERNS = [
+  /duration_ms=(\d+)/,
+  /^(INFO|WARN|ERROR)/,
+  /\[([\w-]+)\]/,
+  /status=(\d+)/,
+  /remote_ip=([\d.]+)/,
+  /method=(\w+)/,
+  /path=([\w\/]+)/,
+  /thread_id=(\d+)/,
+  /request_id=([\w_]+)/,
+  /trace_id=(\w+)/,
+  /ts=(\d+)/,
+  /msg=([\w]+)/
+];
+var REGEX_LEVEL = REGEX_PATTERNS[1];
+var REGEX_DUR   = REGEX_PATTERNS[0];
+var REGEX_SVC   = REGEX_PATTERNS[2];
 
-function benchJSON(lines){
+function benchJSON(lines, fieldCount){
+  var fc=fieldCount||3;
+  var fields=JSON_FIELDS.slice(0,fc);
   var t0=performance.now();
   for(var i=0;i<lines.length;i++){
     var o=JSON.parse(lines[i].json);
-    var _l=o.level, _d=o.duration_ms, _s=o.service;
+    for(var f=0;f<fields.length;f++) var _x=o[fields[f]];
   }
   return performance.now()-t0;
 }
 
-function benchRegex(lines){
+function benchRegex(lines, fieldCount){
+  var fc=fieldCount||3;
+  var pats=REGEX_PATTERNS.slice(0,fc);
   var t0=performance.now();
   for(var i=0;i<lines.length;i++){
     var ln=lines[i].plain;
-    var _l=REGEX_LEVEL.exec(ln);
-    var _d=REGEX_DUR.exec(ln);
-    var _s=REGEX_SVC.exec(ln);
+    for(var p=0;p<pats.length;p++) var _x=pats[p].exec(ln);
   }
   return performance.now()-t0;
 }
@@ -970,19 +1002,19 @@ function runParseBench(){
   document.getElementById('parse-bench-placeholder').style.display='none';
 
   setTimeout(function(){
+    var fc=benchFieldsVal||3;
     var samples=makeSampleLines(BENCH_SAMPLES);
     var jsonTimes=[], regexTimes=[];
 
     // warm-up pass
-    benchJSON(samples.slice(0,100)); benchRegex(samples.slice(0,100));
+    benchJSON(samples.slice(0,100),fc); benchRegex(samples.slice(0,100),fc);
 
     for(var ti=0;ti<BENCH_TIERS.length;ti++){
-      // Scale sample count proportionally to tier (more lines → larger batch)
       var scale=Math.max(1,Math.round(BENCH_TIERS[ti]/50));
       var subset=[];
       for(var r=0;r<scale;r++) subset=subset.concat(samples);
-      var jt=benchJSON(subset)/subset.length*1000; // μs per line → ×1000 = per 1k
-      var rt=benchRegex(subset)/subset.length*1000;
+      var jt=benchJSON(subset,fc)/subset.length*1000;
+      var rt=benchRegex(subset,fc)/subset.length*1000;
       jsonTimes.push(jt);
       regexTimes.push(rt);
     }
@@ -1072,6 +1104,20 @@ function drawParseBenchChart(jsonT, regexT){
 
   drawLine(regexT,'#f59e0b');
   drawLine(jsonT,'#6366f1');
+
+  // crossover annotation
+  var crossed=false;
+  for(var ci=1;ci<jsonT.length;ci++){
+    if(!crossed && jsonT[ci]<=regexT[ci] && jsonT[ci-1]>regexT[ci-1]){
+      crossed=true;
+      var cx=xp(ci);
+      ctx.strokeStyle='rgba(148,163,184,0.35)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(cx,TP); ctx.lineTo(cx,h-BP); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle=tc; ctx.font='9px monospace'; ctx.textAlign='center';
+      ctx.fillText('crossover',cx,TP+8);
+    }
+  }
 }
 
 function renderParseBenchTable(jsonT, regexT){
@@ -1094,15 +1140,27 @@ function renderParseBenchTable(jsonT, regexT){
 function renderParseBenchInsight(jsonT, regexT){
   var el=document.getElementById('parse-bench-insight');
   if(!el)return;
-  var lowRatio=(regexT[0]/jsonT[0]).toFixed(1);
-  var highRatio=(regexT[regexT.length-1]/jsonT[jsonT.length-1]).toFixed(1);
-  var jLow=jsonT[0].toFixed(1), jHigh=jsonT[jsonT.length-1].toFixed(1);
-  var rLow=regexT[0].toFixed(1), rHigh=regexT[regexT.length-1].toFixed(1);
-  el.innerHTML='<strong>What the numbers show:</strong> At 50 lines/sec, regex costs <strong>'+lowRatio+'× more</strong> than JSON lookup ('+rLow+'μs vs '+jLow+'μs/1k lines). '
-    +'At 5,000 lines/sec the overhead grows to <strong>'+highRatio+'×</strong> ('+rHigh+'μs vs '+jHigh+'μs/1k). '
-    +'JSON parse time stays near-flat — each field access is a single hash lookup. '
-    +'Regex must scan the entire string on every rule, and backtracking risk grows with pattern complexity. '
-    +'At firehose scale the difference translates directly into CPU budget: structured logging lets you run more extraction rules for the same infrastructure cost.';
+  var fc=benchFieldsVal||3;
+  var avgJ=jsonT.reduce(function(a,b){return a+b;},0)/jsonT.length;
+  var avgR=regexT.reduce(function(a,b){return a+b;},0)/regexT.length;
+  var jsonWins=avgJ<avgR;
+  var ratio=(jsonWins?avgR/avgJ:avgJ/avgR).toFixed(1);
+  var winner=jsonWins?'<span class="text-indigo-400 font-bold">JSON</span>':'<span class="text-amber-400 font-bold">Regex</span>';
+  var loser=jsonWins?'regex':'JSON';
+
+  var crossoverMsg='';
+  if(!jsonWins){
+    crossoverMsg=' Drag the slider past ~5 fields to see the crossover: once JSON.parse() cost is amortised across more field accesses, it beats running N separate patterns.';
+  } else {
+    crossoverMsg=' Below ~4 fields, regex is faster — fewer patterns than the parse overhead. The crossover already happened.';
+  }
+
+  el.innerHTML='<strong>At '+fc+' field'+(fc>1?'s':'')+':</strong> '+winner+' is <strong>'+ratio+'×</strong> faster than '+loser+' on average across all speed tiers. '
+    +(jsonWins
+      ? 'JSON.parse() cost is fixed per line — parse once, access any number of fields cheaply. Each additional field is a hash lookup; each additional regex is a full string scan.'
+      : 'At '+fc+' field'+(fc>1?'s':'')+', running '+fc+' regex pattern'+(fc>1?'s':'')+' is cheaper than JSON.parse() overhead. Regex wins on raw speed for narrow, simple queries.')
+    +crossoverMsg
+    +' <em>The correctness argument remains unchanged: regex cannot prevent false positives across field boundaries regardless of speed.</em>';
 }
 
 function drawSvcChart(){
