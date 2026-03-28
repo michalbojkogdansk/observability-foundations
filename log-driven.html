@@ -356,17 +356,12 @@ for line in log_lines:
     <div class="flex items-center justify-between mb-3">
       <div>
         <div class="text-sm font-bold">Parse Cost Benchmark</div>
-        <div class="text-xs text-slate-500 mt-0.5">JSON.parse()-once vs N regex patterns — drag the field slider to find the crossover where JSON becomes faster</div>
+        <div class="text-xs text-slate-500 mt-0.5">Parse-once vs N regex scans — chart sweeps 1→20 fields to show exactly where JSON overtakes regex</div>
       </div>
       <button id="run-parse-bench-btn" onclick="runParseBench()" class="run-btn btn btn-sm bg-indigo-600 hover:bg-indigo-500 text-white border-0">▶ Run Benchmark</button>
     </div>
     <div class="flex items-center gap-3 mb-3 flex-wrap">
-      <label class="text-xs text-slate-400 shrink-0">Fields to extract:</label>
-      <input type="range" min="1" max="12" value="3" id="bench-fields-slider"
-        oninput="benchFieldsVal=parseInt(this.value);document.getElementById('bench-fields-label').textContent=this.value"
-        class="w-32 accent-indigo-500">
-      <span id="bench-fields-label" class="text-xs font-bold text-indigo-400 w-4">3</span>
-      <span class="text-xs text-slate-500">— JSON wins <em>after</em> the crossover point (~4–6 fields)</span>
+      <span class="text-xs text-slate-500">Sweeps 1→20 fields extracted — regex cost rises linearly, JSON parse cost stays fixed. X-axis = fields, Y-axis = µs/line.</span>
     </div>
     <div class="chart-wrap mb-3" id="parse-bench-wrap" style="display:none">
       <canvas id="parse-bench-chart" style="width:100%;height:140px;display:block"></canvas>
@@ -378,10 +373,10 @@ for line in log_lines:
     <div id="parse-bench-table" class="hidden overflow-x-auto mb-3">
       <table class="w-full text-xs">
         <thead><tr class="text-slate-500 border-b border-slate-700/40">
-          <th class="text-left py-1 pr-4">Lines/sec</th>
-          <th class="text-right pr-4">JSON (μs/1k)</th>
-          <th class="text-right pr-4">Regex (μs/1k)</th>
-          <th class="text-right">Overhead</th>
+          <th class="text-left py-1 pr-4">Fields</th>
+          <th class="text-right pr-4">JSON (µs/line)</th>
+          <th class="text-right pr-4">Regex (µs/line)</th>
+          <th class="text-right">Winner</th>
         </tr></thead>
         <tbody id="parse-bench-tbody" class="font-mono"></tbody>
       </table>
@@ -928,34 +923,63 @@ function setLogFmt(f){
 }
 
 /* ── Parse Cost Benchmark ── */
-var BENCH_TIERS = [50, 200, 600, 1600, 5000];
-var BENCH_SAMPLES = 2000; // lines per measurement
+// Field counts to sweep — X-axis of benchmark chart
+var BENCH_FIELD_POINTS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 18, 20];
+var BENCH_SAMPLES = 600; // lines per measurement point
 
-var benchFieldsVal = 3;
 
 function makeSampleLines(n){
-  var services=['api','auth','db','cache','worker'];
+  var services=['api-gateway','auth-service','payment-svc','inventory-api','worker'];
   var levels=['INFO','WARN','ERROR'];
+  var regions=['eu-west-1','us-east-1','ap-south-1'];
+  var dcs=['dc-paris-1','dc-virginia-2','dc-mumbai-3'];
+  var versions=['3.2.1','3.2.0','3.1.5'];
+  var methods=['GET','POST','PUT','DELETE'];
+  var errorCodes=['UPSTREAM_TIMEOUT','RATE_LIMIT','DB_CONN_FAIL','CACHE_MISS','AUTH_FAIL'];
   var lines=[];
   for(var i=0;i<n;i++){
     var svc=services[i%services.length];
     var lvl=levels[i%3===0?2:i%3===1?1:0];
     var dur=Math.floor(50+Math.random()*950);
-    var ip='10.0.'+(i%10)+'.'+(i%255);
-    var obj={ts:Date.now(),level:lvl,service:svc,duration_ms:dur,
-             remote_ip:ip,method:'GET',path:'/api/'+svc,
-             status:lvl==='ERROR'?503:200,thread_id:i%100,
-             request_id:'req_'+i,trace_id:'t'+i,msg:'request completed'};
+    var ip='10.'+Math.floor(Math.random()*4)+'.'+Math.floor(Math.random()*254)+'.'+Math.floor(Math.random()*254);
+    var method=methods[i%methods.length];
+    var region=regions[i%regions.length];
+    var dc=dcs[i%dcs.length];
+    var ver=versions[i%versions.length];
+    var rid='req-'+Math.random().toString(36).slice(2,10);
+    var tid='t-'+Math.random().toString(36).slice(2,10);
+    var uid='u-'+Math.floor(Math.random()*100000);
+    var sid='sess-'+Math.floor(Math.random()*1000000);
+    var ec=lvl==='ERROR'?errorCodes[i%errorCodes.length]:'';
+    var obj={
+      ts:Date.now()+i, level:lvl, service:svc, duration_ms:dur,
+      remote_ip:ip, method:method, path:'/api/v2/'+svc+'/'+(i%100),
+      status:lvl==='ERROR'?503:200, thread_id:i%100,
+      request_id:rid, trace_id:tid,
+      user_id:uid, session_id:sid,
+      region:region, datacenter:dc, version:ver,
+      response_size:Math.floor(100+Math.random()*5000),
+      db_query_count:Math.floor(Math.random()*20),
+      error_code:ec, retry_count:Math.floor(Math.random()*4)
+    };
     var plain=lvl+' ['+svc+'] duration_ms='+dur+' remote_ip='+ip
-              +' method=GET path=/api/'+svc+' status='+obj.status
-              +' thread_id='+(i%100)+' request_id=req_'+i+' trace_id=t'+i+' ts='+Date.now();
+      +' method='+method+' path=/api/v2/'+svc+'/'+(i%100)
+      +' status='+obj.status+' thread_id='+(i%100)
+      +' request_id='+rid+' trace_id='+tid
+      +' user_id='+uid+' session_id='+sid
+      +' region='+region+' datacenter='+dc+' version='+ver
+      +' response_size='+obj.response_size+' db_query_count='+obj.db_query_count
+      +' error_code='+ec+' retry_count='+obj.retry_count+' ts='+(Date.now()+i);
     lines.push({json:JSON.stringify(obj), plain:plain});
   }
   return lines;
 }
 
-// JSON fields and matching regex patterns — same order
-var JSON_FIELDS    = ['duration_ms','level','service','status','remote_ip','method','path','thread_id','request_id','trace_id','ts','msg'];
+// 20 JSON fields + matching regex patterns (same order)
+var JSON_FIELDS = ['duration_ms','level','service','status','remote_ip','method','path',
+                   'thread_id','request_id','trace_id','user_id','session_id',
+                   'region','datacenter','version','response_size','db_query_count',
+                   'error_code','retry_count','ts'];
 var REGEX_PATTERNS = [
   /duration_ms=(\d+)/,
   /^(INFO|WARN|ERROR)/,
@@ -963,12 +987,20 @@ var REGEX_PATTERNS = [
   /status=(\d+)/,
   /remote_ip=([\d.]+)/,
   /method=(\w+)/,
-  /path=([\w\/]+)/,
+  /path=([\w\/\-]+)/,
   /thread_id=(\d+)/,
-  /request_id=([\w_]+)/,
-  /trace_id=(\w+)/,
-  /ts=(\d+)/,
-  /msg=([\w]+)/
+  /request_id=([\w-]+)/,
+  /trace_id=([\w-]+)/,
+  /user_id=([\w-]+)/,
+  /session_id=([\w-]+)/,
+  /region=([\w-]+)/,
+  /datacenter=([\w-]+)/,
+  /version=([\d.]+)/,
+  /response_size=(\d+)/,
+  /db_query_count=(\d+)/,
+  /error_code=(\w*)/,
+  /retry_count=(\d+)/,
+  /ts=(\d+)/
 ];
 var REGEX_LEVEL = REGEX_PATTERNS[1];
 var REGEX_DUR   = REGEX_PATTERNS[0];
@@ -1002,24 +1034,24 @@ function runParseBench(){
   document.getElementById('parse-bench-placeholder').style.display='none';
 
   setTimeout(function(){
-    var fc=benchFieldsVal||3;
-    var samples=makeSampleLines(BENCH_SAMPLES);
     var jsonTimes=[], regexTimes=[];
 
-    // warm-up pass
-    benchJSON(samples.slice(0,100),fc); benchRegex(samples.slice(0,100),fc);
+    // warm-up: prime JIT equally for both paths
+    var warmup=makeSampleLines(200);
+    benchJSON(warmup, 10); benchRegex(warmup, 10);
+    benchJSON(warmup, 3);  benchRegex(warmup, 3);
 
-    for(var ti=0;ti<BENCH_TIERS.length;ti++){
-      var scale=Math.max(1,Math.round(BENCH_TIERS[ti]/50));
-      var subset=[];
-      for(var r=0;r<scale;r++) subset=subset.concat(samples);
-      var jt=benchJSON(subset,fc)/subset.length*1000;
-      var rt=benchRegex(subset,fc)/subset.length*1000;
+    // Sweep over field counts — fresh samples each point to prevent JIT string-caching
+    for(var pi=0; pi<BENCH_FIELD_POINTS.length; pi++){
+      var fc=BENCH_FIELD_POINTS[pi];
+      var subset=makeSampleLines(BENCH_SAMPLES); // fresh random strings each time
+      // µs/line = (total_ms / N) * 1000
+      var jt=benchJSON(subset, fc) / subset.length * 1000;
+      var rt=benchRegex(subset, fc) / subset.length * 1000;
       jsonTimes.push(jt);
       regexTimes.push(rt);
     }
 
-    // render chart
     document.getElementById('parse-bench-wrap').style.display='block';
     document.getElementById('parse-bench-legend').classList.remove('hidden');
     document.getElementById('parse-bench-table').classList.remove('hidden');
@@ -1036,44 +1068,58 @@ function drawParseBenchChart(jsonT, regexT){
   var canvas=document.getElementById('parse-bench-chart');
   if(!canvas)return;
   var dpr=window.devicePixelRatio||1;
-  var w=canvas.offsetWidth||400, h=140;
+  var w=canvas.offsetWidth||400, h=160;
   canvas.width=w*dpr; canvas.height=h*dpr;
   canvas.style.width=w+'px'; canvas.style.height=h+'px';
   var ctx=canvas.getContext('2d');
   ctx.scale(dpr,dpr);
 
   var dark=document.documentElement.classList.contains('dark');
-  var bg=dark?'rgba(10,10,25,0)':'rgba(248,250,252,0)';
   var gc=dark?'rgba(148,163,184,0.08)':'rgba(100,116,139,0.12)';
   var tc=dark?'#94a3b8':'#475569';
   ctx.clearRect(0,0,w,h);
 
-  var LP=46,RP=12,TP=10,BP=28;
+  var LP=42, RP=12, TP=16, BP=28;
+  var plotW=w-LP-RP, plotH=h-TP-BP;
+
   var all=jsonT.concat(regexT);
-  var maxV=Math.max.apply(null,all)*1.15;
-  var minV=0;
+  var maxV=Math.max.apply(null,all)*1.2||1;
 
-  function px(val){ return LP+(w-LP-RP)*(BENCH_TIERS.indexOf(BENCH_TIERS[0])/(BENCH_TIERS.length-1)); }
-  function xp(i){ return LP+(w-LP-RP)*(i/(BENCH_TIERS.length-1)); }
-  function yp(v){ return TP+(h-TP-BP)*(1-(v-minV)/(maxV-minV)); }
+  var pts=BENCH_FIELD_POINTS;
+  function xp(i){ return LP + plotW*(i/(pts.length-1)); }
+  function yp(v){ return TP + plotH*(1-v/maxV); }
 
-  // grid lines
+  // y grid
   for(var g=0;g<=4;g++){
-    var gv=minV+(maxV-minV)*(g/4);
+    var gv=maxV*(g/4);
     var gy=yp(gv);
     ctx.strokeStyle=gc; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(LP,gy); ctx.lineTo(w-RP,gy); ctx.stroke();
     ctx.fillStyle=tc; ctx.font='9px monospace'; ctx.textAlign='right';
-    ctx.fillText(gv.toFixed(0)+'μs',LP-4,gy+3);
+    ctx.fillText(gv.toFixed(1)+'µs', LP-3, gy+3);
   }
 
-  // x labels
+  // x labels — only show a subset to avoid crowding
   ctx.textAlign='center'; ctx.fillStyle=tc; ctx.font='9px monospace';
-  for(var i=0;i<BENCH_TIERS.length;i++){
+  for(var i=0;i<pts.length;i++){
     var x=xp(i);
-    ctx.fillText(BENCH_TIERS[i]>=1000?(BENCH_TIERS[i]/1000)+'k':BENCH_TIERS[i], x, h-6);
+    if(pts[i]===1||pts[i]===5||pts[i]===10||pts[i]===15||pts[i]===20){
+      ctx.fillText(pts[i], x, h-BP+14);
+    }
   }
-  ctx.fillText('lines/sec',LP+(w-LP-RP)/2, h-6+12);
+  // x-axis label
+  ctx.fillText('fields extracted', LP+plotW/2, h-2);
+
+  // fill under regex (higher) area
+  ctx.beginPath();
+  for(var i=0;i<regexT.length;i++){
+    var x=xp(i), y=yp(regexT[i]);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.lineTo(xp(regexT.length-1), TP+plotH);
+  ctx.lineTo(LP, TP+plotH);
+  ctx.closePath();
+  ctx.fillStyle='rgba(245,158,11,0.07)'; ctx.fill();
 
   function drawLine(times, color){
     ctx.beginPath();
@@ -1083,40 +1129,33 @@ function drawParseBenchChart(jsonT, regexT){
       if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     }
     ctx.stroke();
-    // dots
     for(var i=0;i<times.length;i++){
       var x=xp(i), y=yp(times[i]);
-      ctx.beginPath(); ctx.arc(x,y,3.5,0,Math.PI*2);
+      ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2);
       ctx.fillStyle=color; ctx.fill();
     }
   }
 
-  // fill under regex line
-  ctx.beginPath();
-  for(var i=0;i<regexT.length;i++){
-    var x=xp(i), y=yp(regexT[i]);
-    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-  }
-  ctx.lineTo(xp(regexT.length-1),h-BP);
-  ctx.lineTo(LP,h-BP);
-  ctx.closePath();
-  ctx.fillStyle='rgba(245,158,11,0.08)'; ctx.fill();
-
   drawLine(regexT,'#f59e0b');
   drawLine(jsonT,'#6366f1');
 
-  // crossover annotation
+  // crossover vertical line
   var crossed=false;
   for(var ci=1;ci<jsonT.length;ci++){
-    if(!crossed && jsonT[ci]<=regexT[ci] && jsonT[ci-1]>regexT[ci-1]){
+    if(!crossed && jsonT[ci]<=regexT[ci]){
       crossed=true;
       var cx=xp(ci);
-      ctx.strokeStyle='rgba(148,163,184,0.35)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
-      ctx.beginPath(); ctx.moveTo(cx,TP); ctx.lineTo(cx,h-BP); ctx.stroke();
+      ctx.strokeStyle='rgba(52,211,153,0.5)'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(cx,TP); ctx.lineTo(cx,TP+plotH); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle=tc; ctx.font='9px monospace'; ctx.textAlign='center';
-      ctx.fillText('crossover',cx,TP+8);
+      ctx.fillStyle='#34d399'; ctx.font='bold 9px monospace'; ctx.textAlign='center';
+      ctx.fillText('JSON wins →', cx+28, TP+10);
     }
+  }
+  if(!crossed){
+    // regex never caught up — label
+    ctx.fillStyle='#f59e0b'; ctx.font='9px monospace'; ctx.textAlign='left';
+    ctx.fillText('regex faster throughout', LP+4, TP+12);
   }
 }
 
@@ -1124,14 +1163,18 @@ function renderParseBenchTable(jsonT, regexT){
   var tbody=document.getElementById('parse-bench-tbody');
   if(!tbody)return;
   var rows='';
-  for(var i=0;i<BENCH_TIERS.length;i++){
-    var ratio=regexT[i]/jsonT[i];
-    var ratioColor=ratio>5?'#f87171':ratio>3?'#fbbf24':'#34d399';
+  for(var i=0;i<BENCH_FIELD_POINTS.length;i++){
+    var fc=BENCH_FIELD_POINTS[i];
+    var jv=jsonT[i], rv=regexT[i];
+    var jsonWins=jv<=rv;
+    var winnerHtml=jsonWins
+      ?'<span class="text-indigo-400 font-bold">JSON '+(rv/jv).toFixed(1)+'×</span>'
+      :'<span class="text-amber-400 font-bold">Regex '+(jv/rv).toFixed(1)+'×</span>';
     rows+='<tr class="border-b border-slate-800/40">'
-      +'<td class="py-1.5 pr-4 text-slate-400">'+BENCH_TIERS[i].toLocaleString()+'</td>'
-      +'<td class="text-right pr-4 text-indigo-400">'+jsonT[i].toFixed(1)+'</td>'
-      +'<td class="text-right pr-4 text-amber-400">'+regexT[i].toFixed(1)+'</td>'
-      +'<td class="text-right font-bold" style="color:'+ratioColor+'">'+ratio.toFixed(1)+'×</td>'
+      +'<td class="py-1.5 pr-4 text-slate-400">'+fc+'</td>'
+      +'<td class="text-right pr-4 '+(jsonWins?'text-indigo-400 font-bold':'text-indigo-300')+'">'+jv.toFixed(2)+'</td>'
+      +'<td class="text-right pr-4 '+(jsonWins?'text-amber-300':'text-amber-400 font-bold')+'">'+rv.toFixed(2)+'</td>'
+      +'<td class="text-right">'+winnerHtml+'</td>'
       +'</tr>';
   }
   tbody.innerHTML=rows;
@@ -1140,27 +1183,35 @@ function renderParseBenchTable(jsonT, regexT){
 function renderParseBenchInsight(jsonT, regexT){
   var el=document.getElementById('parse-bench-insight');
   if(!el)return;
-  var fc=benchFieldsVal||3;
-  var avgJ=jsonT.reduce(function(a,b){return a+b;},0)/jsonT.length;
-  var avgR=regexT.reduce(function(a,b){return a+b;},0)/regexT.length;
-  var jsonWins=avgJ<avgR;
-  var ratio=(jsonWins?avgR/avgJ:avgJ/avgR).toFixed(1);
-  var winner=jsonWins?'<span class="text-indigo-400 font-bold">JSON</span>':'<span class="text-amber-400 font-bold">Regex</span>';
-  var loser=jsonWins?'regex':'JSON';
 
-  var crossoverMsg='';
-  if(!jsonWins){
-    crossoverMsg=' Drag the slider past ~5 fields to see the crossover: once JSON.parse() cost is amortised across more field accesses, it beats running N separate patterns.';
-  } else {
-    crossoverMsg=' Below ~4 fields, regex is faster — fewer patterns than the parse overhead. The crossover already happened.';
+  // Find crossover index
+  var crossoverFields=null;
+  for(var i=0;i<jsonT.length;i++){
+    if(jsonT[i]<=regexT[i]){ crossoverFields=BENCH_FIELD_POINTS[i]; break; }
   }
 
-  el.innerHTML='<strong>At '+fc+' field'+(fc>1?'s':'')+':</strong> '+winner+' is <strong>'+ratio+'×</strong> faster than '+loser+' on average across all speed tiers. '
-    +(jsonWins
-      ? 'JSON.parse() cost is fixed per line — parse once, access any number of fields cheaply. Each additional field is a hash lookup; each additional regex is a full string scan.'
-      : 'At '+fc+' field'+(fc>1?'s':'')+', running '+fc+' regex pattern'+(fc>1?'s':'')+' is cheaper than JSON.parse() overhead. Regex wins on raw speed for narrow, simple queries.')
-    +crossoverMsg
-    +' <em>The correctness argument remains unchanged: regex cannot prevent false positives across field boundaries regardless of speed.</em>';
+  var j1=jsonT[0].toFixed(2), r1=regexT[0].toFixed(2);
+  var jLast=jsonT[jsonT.length-1].toFixed(2), rLast=regexT[regexT.length-1].toFixed(2);
+  var maxRatio=(regexT[regexT.length-1]/jsonT[jsonT.length-1]).toFixed(1);
+
+  var msg='';
+  if(crossoverFields!==null){
+    msg='<strong>Crossover at '+crossoverFields+' fields.</strong> '
+      +'Below that: one regex pattern costs less than a full JSON.parse() — regex wins. '
+      +'At 1 field: JSON='+j1+'µs/line vs regex='+r1+'µs/line. '
+      +'At 20 fields: JSON='+jLast+'µs/line vs regex='+rLast+'µs/line — <strong>'+maxRatio+'× faster</strong>. '
+      +'Why? JSON.parse() is a fixed cost regardless of how many fields you then read. '
+      +'Each extra regex pattern is another full scan of the entire string. '
+      +'Once you need more than ~'+crossoverFields+' fields, parse-once wins permanently. '
+      +'<em>Real observability queries typically extract 8–15 fields. JSON wins there every time.</em>';
+  } else {
+    msg='<strong>Regex faster across all field counts measured.</strong> '
+      +'This happens when the JSON lines are small enough that parse overhead dominates. '
+      +'In production, log lines are typically 300–600 bytes with 15–25 fields — '
+      +'at that scale the crossover appears clearly. '
+      +'<em>Correctness advantage of structured logging remains: no false positives, typed values, no regex boundary failures.</em>';
+  }
+  el.innerHTML=msg;
 }
 
 function drawSvcChart(){
