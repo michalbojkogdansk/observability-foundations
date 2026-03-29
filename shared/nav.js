@@ -22,15 +22,15 @@
 
   var linksHTML = topics.map(function(t) {
     var isActive = (currentPath === t.href) ? ' active' : '';
-    return '<a class="nav-link' + isActive + '" href="' + t.href + '">' +
+    return '<a class="nav-link' + isActive + '" href="' + t.href + '" title="' + t.label + '">' +
       '<span>' + t.icon + '</span>' +
-      '<span>' + t.label + '</span>' +
+      '<span class="nav-label">' + t.label + '</span>' +
     '</a>';
   }).join('');
 
   navEl.innerHTML =
     '<nav class="site-nav">' +
-      '<a class="nav-brand" href="index.html">⚙️ DE Foundations</a>' +
+      '<a class="nav-brand" href="index.html">⚙️ <span class="brand-text">DE Foundations</span></a>' +
       '<div class="nav-links">' + linksHTML + '</div>' +
       '<button class="nav-toggle" id="nav-theme-toggle" title="Toggle dark/light mode">' + themeIcon + '</button>' +
     '</nav>';
