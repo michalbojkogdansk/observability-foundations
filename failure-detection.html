@@ -3,41 +3,785 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Failure Detection — Data Engineering Foundations</title>
+<title>Failure Detection — Observability Foundations</title>
 <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script>tailwind.config = { darkMode: 'class' }</script>
 <link rel="stylesheet" href="shared/style.css" />
+<style>
+/* ── Service toggles ── */
+.svc-toggle { display:flex; align-items:center; gap:0.5rem; padding:0.5rem 0.75rem; border-radius:0.6rem; border:1px solid; cursor:pointer; transition:all 0.15s; user-select:none; font-size:0.82rem; font-weight:600; }
+.svc-toggle.on  { border-color:rgba(99,102,241,0.5); background:rgba(99,102,241,0.12); color:#a5b4fc; }
+.svc-toggle.off { border-color:rgba(100,116,139,0.2); background:transparent; color:#64748b; }
+.svc-toggle:hover { border-color:rgba(99,102,241,0.35); color:#94a3b8; }
+
+/* ── Alert stream ── */
+.alert-stream { overflow-y:auto; padding:0.5rem; border-radius:0.75rem; font-family:'Consolas','Monaco','Courier New',monospace; font-size:0.7rem; line-height:1.7; }
+.dark .alert-stream { background:rgba(6,8,20,0.9); border:1px solid rgba(99,102,241,0.12); }
+html:not(.dark) .alert-stream { background:rgba(248,250,252,0.98); border:1px solid #e2e8f0; color:#334155; }
+
+.alert-row { display:flex; gap:0.4rem; align-items:flex-start; padding:3px 4px; border-radius:4px; margin-bottom:2px; border-left:3px solid transparent; opacity:0; animation:slideIn 0.25s ease forwards; }
+.alert-row.sev-critical { border-left-color:#ef4444; background:rgba(239,68,68,0.06); }
+.alert-row.sev-warning  { border-left-color:#f59e0b; background:rgba(245,158,11,0.05); }
+.alert-row.sev-info     { border-left-color:#6366f1; background:rgba(99,102,241,0.04); }
+@keyframes slideIn { from{opacity:0;transform:translateX(-6px)} to{opacity:1;transform:translateX(0)} }
+
+.sev-badge { flex-shrink:0; padding:0 5px; border-radius:3px; font-size:0.62rem; font-weight:700; letter-spacing:0.04em; line-height:1.6; }
+.sev-badge.critical { background:rgba(239,68,68,0.2); color:#f87171; }
+.sev-badge.warning  { background:rgba(245,158,11,0.2); color:#fbbf24; }
+.sev-badge.info     { background:rgba(99,102,241,0.2); color:#a5b4fc; }
+
+.alert-ts  { flex-shrink:0; color:#475569; min-width:78px; }
+.alert-svc { flex-shrink:0; min-width:90px; }
+.svc-color-db      { color:#60a5fa; }
+.svc-color-cache   { color:#34d399; }
+.svc-color-auth    { color:#a78bfa; }
+.svc-color-api     { color:#f472b6; }
+.svc-color-payment { color:#fbbf24; }
+.svc-color-notif   { color:#fb923c; }
+.alert-msg { color:#94a3b8; flex:1; }
+html:not(.dark) .alert-msg  { color:#475569; }
+html:not(.dark) .alert-ts   { color:#94a3b8; }
+
+/* ── Correlated incidents ── */
+.incident-card { border-radius:0.75rem; padding:0.75rem 1rem; border:1px solid; margin-bottom:0.6rem; }
+.incident-card.critical { border-color:rgba(239,68,68,0.3); background:rgba(239,68,68,0.05); }
+.incident-card.warning  { border-color:rgba(245,158,11,0.3); background:rgba(245,158,11,0.04); }
+.incident-card.info     { border-color:rgba(99,102,241,0.25); background:rgba(99,102,241,0.04); }
+
+/* ── Benchmark bars ── */
+.bench-bar-wrap { background:rgba(99,102,241,0.08); border-radius:4px; height:12px; overflow:hidden; }
+.bench-bar { height:100%; border-radius:4px; transition:width 0.8s cubic-bezier(0.4,0,0.2,1); }
+
+/* ── Mode radio ── */
+.mode-set { display:inline-flex; border-radius:8px; overflow:hidden; border:1px solid rgba(99,102,241,0.25); }
+.mode-opt { padding:0.35rem 1rem; font-size:0.78rem; font-weight:600; cursor:pointer; border:none; transition:all 0.15s; }
+.mode-opt.active  { background:rgba(99,102,241,0.25); color:#a5b4fc; }
+.mode-opt:not(.active) { background:transparent; color:#64748b; }
+.mode-opt:not(.active):hover { color:#94a3b8; }
+
+/* ── Correlation slider ── */
+.corr-slider { -webkit-appearance:none; width:100%; height:6px; border-radius:3px; outline:none; background:rgba(99,102,241,0.15); }
+.corr-slider::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; background:#6366f1; cursor:pointer; border:2px solid #a5b4fc; }
+
+/* ── Root cause arrow ── */
+.cascade-arrow { color:#6366f1; font-size:0.75rem; padding:0 0.25rem; }
+
+/* ── Stats grid ── */
+.stat-box { border-radius:0.75rem; padding:1rem; text-align:center; }
+.dark .stat-box { background:rgba(15,20,40,0.6); border:1px solid rgba(99,102,241,0.12); }
+html:not(.dark) .stat-box { background:rgba(248,250,252,0.95); border:1px solid #e2e8f0; }
+
+/* ── Timeline ── */
+.tl-bar-outer { background:rgba(99,102,241,0.08); border-radius:4px; height:8px; position:relative; }
+.tl-bar-inner { height:100%; border-radius:4px; position:absolute; }
+
+/* ── Run button states ── */
+.run-btn-idle    { background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; }
+.run-btn-running { background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff; }
+.run-btn-done    { background:linear-gradient(135deg,#10b981,#059669); color:#fff; }
+</style>
 </head>
 <body class="min-h-screen">
 <div id="site-nav"></div>
 
-<main class="max-w-7xl mx-auto px-4 py-8">
-  <div class="card p-8 text-center">
-    <div class="text-6xl mb-4">🔥</div>
-    <h1 class="text-3xl font-bold mb-3">Failure Detection &amp; Prediction</h1>
-    <p class="text-slate-400 max-w-2xl mx-auto mb-6">Building systems that detect failures before they happen. From threshold-based alerts to ML-powered anomaly detection in production systems.</p>
-    <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 text-amber-400 text-sm font-medium">
-      🚧 Coming Soon
+<main class="max-w-7xl mx-auto px-4 py-8 pt-20">
+
+  <!-- Hero -->
+  <div class="mb-8">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="text-3xl">🔥</span>
+      <h1 class="text-2xl font-bold">Failure Detection</h1>
+      <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">● Live</span>
+    </div>
+    <p class="text-slate-400 text-sm max-w-3xl">From 47 alerts to 3 root causes in seconds. Explore how correlation windows and grouping rules transform an alert storm into an actionable incident list.</p>
+  </div>
+
+  <!-- ─────────────────────────────────────────── -->
+  <!-- SCENARIO 2: Alert Storm Correlator         -->
+  <!-- ─────────────────────────────────────────── -->
+  <div class="card p-6 mb-6">
+    <div class="flex items-center gap-3 mb-1">
+      <span class="text-lg">🌩️</span>
+      <h2 class="text-base font-bold">Alert Storm Correlator</h2>
+    </div>
+    <p class="text-slate-400 text-xs mb-5 ml-8">Configure your system, trigger a failure, then tune the correlation engine to collapse the noise into root causes.</p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- LEFT: Configurator -->
+      <div class="space-y-5">
+
+        <!-- Step 1: Services -->
+        <div class="card p-4">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Step 1 — Your System</div>
+          <p class="text-xs text-slate-500 mb-3">Toggle the services that exist in your environment. Each active service will generate realistic alerts during the incident.</p>
+          <div class="grid grid-cols-2 gap-2" id="svc-toggles">
+            <div class="svc-toggle on"  data-svc="db"      onclick="toggleSvc(this)">🗄️ Database</div>
+            <div class="svc-toggle on"  data-svc="cache"   onclick="toggleSvc(this)">⚡ Cache</div>
+            <div class="svc-toggle on"  data-svc="auth"    onclick="toggleSvc(this)">🔐 Auth Service</div>
+            <div class="svc-toggle on"  data-svc="api"     onclick="toggleSvc(this)">🌐 API Gateway</div>
+            <div class="svc-toggle on"  data-svc="payment" onclick="toggleSvc(this)">💳 Payment</div>
+            <div class="svc-toggle off" data-svc="notif"   onclick="toggleSvc(this)">📨 Notifications</div>
+          </div>
+        </div>
+
+        <!-- Step 2: Failure Mode -->
+        <div class="card p-4">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Step 2 — Failure Mode</div>
+          <p class="text-xs text-slate-500 mb-3">Cascade: one service fails and pulls others down. Random: services fail independently, harder to spot the pattern.</p>
+          <div class="mode-set" id="mode-set">
+            <button class="mode-opt active" onclick="setMode('cascade',this)">🔗 Cascade</button>
+            <button class="mode-opt"        onclick="setMode('random',this)">🎲 Random</button>
+          </div>
+          <div id="cascade-hint" class="mt-3 p-3 rounded-xl text-xs text-slate-400" style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.12)">
+            <span class="text-indigo-400 font-semibold">Cascade path: </span>
+            <span class="svc-color-db">Database</span>
+            <span class="cascade-arrow">→</span>
+            <span class="svc-color-cache">Cache</span>
+            <span class="cascade-arrow">→</span>
+            <span class="svc-color-auth">Auth</span>
+            <span class="cascade-arrow">→</span>
+            <span class="svc-color-api">API Gateway</span>
+            <span class="cascade-arrow">→</span>
+            <span class="svc-color-payment">Payment</span>
+            <span class="cascade-arrow">→</span>
+            <span class="svc-color-notif">Notifications</span>
+          </div>
+          <div id="random-hint" class="mt-3 p-3 rounded-xl text-xs text-slate-400 hidden" style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.12)">
+            <span class="text-amber-400 font-semibold">⚠️ Random mode:</span> Services fail at unpredictable times — common in real-world incidents where the root cause isn't obvious. Try to spot correlations manually first.
+          </div>
+        </div>
+
+        <!-- Step 3: Trigger -->
+        <div class="card p-4">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Step 3 — Trigger</div>
+          <button id="trigger-btn" onclick="triggerIncident()"
+            class="run-btn-idle w-full py-3 rounded-xl font-bold text-sm transition-all duration-300">
+            🚨 Trigger Incident
+          </button>
+          <div id="trigger-progress" class="mt-3 hidden">
+            <div class="flex justify-between text-xs text-slate-500 mb-1">
+              <span id="progress-label">Generating alerts...</span>
+              <span id="progress-count">0 / 0</span>
+            </div>
+            <div class="bench-bar-wrap">
+              <div id="progress-bar" class="bench-bar bg-indigo-500" style="width:0%"></div>
+            </div>
+          </div>
+          <div id="trigger-summary" class="mt-3 hidden text-xs text-slate-400 text-center">
+            Incident complete — <span id="total-alerts-label" class="text-indigo-400 font-semibold"></span> alerts generated across <span id="total-svcs-label" class="text-indigo-400 font-semibold"></span> services
+          </div>
+        </div>
+
+      </div><!-- /LEFT -->
+
+      <!-- RIGHT: Alert Stream -->
+      <div class="flex flex-col gap-4">
+        <div class="card p-4 flex-1">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">📡 Live Alert Stream</div>
+            <div id="stream-badge" class="text-xs px-2 py-0.5 rounded-full bg-slate-700/40 text-slate-500">Waiting</div>
+          </div>
+          <div id="alert-stream" class="alert-stream" style="height:320px">
+            <div class="text-slate-600 text-xs text-center pt-12">— trigger an incident to see alerts stream in —</div>
+          </div>
+        </div>
+
+        <!-- Alert severity legend -->
+        <div class="flex gap-4 text-xs text-slate-500 px-1">
+          <span><span class="text-red-400 font-bold">■</span> CRITICAL — immediate action</span>
+          <span><span class="text-amber-400 font-bold">■</span> WARNING — investigate</span>
+          <span><span class="text-indigo-400 font-bold">■</span> INFO — context</span>
+        </div>
+      </div><!-- /RIGHT -->
+
+    </div><!-- /grid -->
+  </div><!-- /Scenario card -->
+
+  <!-- ─────────────────────────────────────────── -->
+  <!-- CORRELATION ENGINE                          -->
+  <!-- ─────────────────────────────────────────── -->
+  <div class="card p-6 mb-6" id="correlation-section">
+    <div class="flex items-center gap-3 mb-1">
+      <span class="text-lg">🔗</span>
+      <h2 class="text-base font-bold">Correlation Engine</h2>
+    </div>
+    <p class="text-slate-400 text-xs mb-5 ml-8">Tune the correlation rules to collapse the alert flood into a short list of root causes. Watch the noise metric drop.</p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- Controls -->
+      <div class="space-y-5">
+        <div class="card p-4">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Correlation Window</div>
+          <p class="text-xs text-slate-500 mb-3">Alerts within this time window are candidates for grouping. Wider = fewer incidents. Too wide = unrelated alerts merged.</p>
+          <div class="flex items-center gap-3">
+            <input type="range" id="corr-window" class="corr-slider flex-1" min="5" max="120" value="30" oninput="updateCorrWindow(this.value)" />
+            <span id="corr-window-val" class="text-indigo-400 font-bold text-sm min-w-[40px] text-right">30s</span>
+          </div>
+          <div class="flex justify-between text-xs text-slate-600 mt-1">
+            <span>5s (tight)</span><span>120s (loose)</span>
+          </div>
+        </div>
+
+        <div class="card p-4">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Grouping Rule</div>
+          <p class="text-xs text-slate-500 mb-3">How to group alerts within the window — by service name, by host machine, or merge everything.</p>
+          <div class="space-y-2" id="group-rules">
+            <label class="flex items-center gap-2 cursor-pointer text-sm">
+              <input type="radio" name="group" value="service" checked onchange="setGroupRule('service')" class="accent-indigo-500" />
+              <span>By Service <span class="text-slate-500 text-xs">(one incident per service)</span></span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer text-sm">
+              <input type="radio" name="group" value="host" onchange="setGroupRule('host')" class="accent-indigo-500" />
+              <span>By Host <span class="text-slate-500 text-xs">(one incident per machine)</span></span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer text-sm">
+              <input type="radio" name="group" value="any" onchange="setGroupRule('any')" class="accent-indigo-500" />
+              <span>Merge All <span class="text-slate-500 text-xs">(entire window = one incident)</span></span>
+            </label>
+          </div>
+        </div>
+
+        <button onclick="runCorrelation()"
+          class="w-full py-3 rounded-xl font-bold text-sm transition-all duration-200"
+          style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;">
+          ⚡ Apply Correlation
+        </button>
+      </div>
+
+      <!-- Correlated incidents -->
+      <div class="lg:col-span-2">
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Correlated Incidents</div>
+        <div id="corr-output" class="space-y-2" style="min-height:200px">
+          <div class="text-slate-600 text-xs text-center pt-10">— run an incident first, then apply correlation —</div>
+        </div>
+      </div>
+
     </div>
   </div>
 
-  <div class="card p-6 mt-6">
-    <h2 class="text-xl font-bold mb-4">What you'll learn</h2>
-    <ul class="space-y-3 text-slate-300">
-      <li>✅ Setting dynamic thresholds vs static alerts</li>
-      <li>✅ Time-series anomaly detection patterns</li>
-      <li>✅ Failure prediction with rolling windows</li>
-      <li>✅ Building alert fatigue-free monitoring</li>
-    </ul>
+  <!-- ─────────────────────────────────────────── -->
+  <!-- BENCHMARK                                  -->
+  <!-- ─────────────────────────────────────────── -->
+  <div class="card p-6 mb-6" id="benchmark-section">
+    <div class="flex items-center gap-3 mb-1">
+      <span class="text-lg">📊</span>
+      <h2 class="text-base font-bold">Benchmark — Raw vs Correlated</h2>
+    </div>
+    <p class="text-slate-400 text-xs mb-5 ml-8">The numbers tell the story: how many alerts become incidents, how much noise is removed, and how quickly you can understand what's happening.</p>
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <div class="stat-box">
+        <div class="text-2xl font-bold text-red-400" id="stat-raw">—</div>
+        <div class="text-xs text-slate-400 mt-1">Raw Alerts</div>
+      </div>
+      <div class="stat-box">
+        <div class="text-2xl font-bold text-indigo-400" id="stat-incidents">—</div>
+        <div class="text-xs text-slate-400 mt-1">Incidents</div>
+      </div>
+      <div class="stat-box">
+        <div class="text-2xl font-bold text-emerald-400" id="stat-reduction">—</div>
+        <div class="text-xs text-slate-400 mt-1">Noise Reduced</div>
+      </div>
+      <div class="stat-box">
+        <div class="text-2xl font-bold text-amber-400" id="stat-snr">—</div>
+        <div class="text-xs text-slate-400 mt-1">Signal / Noise</div>
+      </div>
+    </div>
+
+    <!-- Time to understand -->
+    <div class="card p-4 mb-4">
+      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Time to Understand the Incident</div>
+      <div class="space-y-3">
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-400">Raw alert triage <span class="text-slate-600">(read 47 alerts, spot the pattern manually)</span></span>
+            <span class="text-red-400 font-semibold" id="triage-raw-label">~8 min</span>
+          </div>
+          <div class="bench-bar-wrap">
+            <div class="bench-bar bg-red-500" id="triage-raw-bar" style="width:100%"></div>
+          </div>
+        </div>
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-400">Correlated incidents <span class="text-slate-600">(read 3–6 grouped incidents with root cause)</span></span>
+            <span class="text-emerald-400 font-semibold" id="triage-corr-label">~23 sec</span>
+          </div>
+          <div class="bench-bar-wrap">
+            <div class="bench-bar bg-emerald-500" id="triage-corr-bar" style="width:5%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alert volume over simulated time -->
+    <div class="card p-4 mb-4">
+      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Alert Volume Over Time</div>
+      <canvas id="timeline-chart" height="120" style="width:100%"></canvas>
+    </div>
+
+    <!-- Dynamic analysis -->
+    <div id="analysis-box" class="p-4 rounded-xl text-sm text-slate-300 hidden" style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.18);">
+      <div class="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2">🧠 What This Means for Your Team</div>
+      <div id="analysis-text"></div>
+    </div>
   </div>
+
+  <!-- ─────────────────────────────────────────── -->
+  <!-- FURTHER READING                            -->
+  <!-- ─────────────────────────────────────────── -->
+  <section class="card p-6 mb-6">
+    <h2 class="text-base font-bold mb-4">📚 Further Reading</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <a href="https://medium.com/observability-is-engineering/log-driven-development-why-logs-should-be-a-first-class-citizen-in-your-code-203996e4b291" target="_blank" class="block p-4 rounded-xl border border-slate-700/40 hover:border-indigo-500/40 transition-colors no-underline">
+        <div class="text-xs text-indigo-400 font-semibold mb-1">Medium · Observability is Engineering</div>
+        <div class="text-sm font-semibold mb-1">Log-Driven Development: Why Logs Should Be a First-Class Citizen in Your Code</div>
+        <div class="text-xs text-slate-400">Structured logs are the raw material for failure detection — start here to understand why format matters.</div>
+      </a>
+      <a href="https://medium.com/observability-is-engineering/log-driven-development-e4846484bc14" target="_blank" class="block p-4 rounded-xl border border-slate-700/40 hover:border-indigo-500/40 transition-colors no-underline">
+        <div class="text-xs text-indigo-400 font-semibold mb-1">Medium · Observability is Engineering</div>
+        <div class="text-sm font-semibold mb-1">Log-Driven Development</div>
+        <div class="text-xs text-slate-400">How structured logs become a real-time data pipeline — the foundation for automated failure detection.</div>
+      </a>
+    </div>
+  </section>
+
 </main>
 
 <script>
-  function getPreferredTheme() { return localStorage.getItem('de-theme') || 'dark'; }
-  function applyTheme(theme) { document.documentElement.classList.toggle('dark', theme === 'dark'); localStorage.setItem('de-theme', theme); }
-  function toggleTheme() { applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark'); var btn = document.getElementById('nav-theme-toggle'); if (btn) btn.textContent = document.documentElement.classList.contains('dark') ? '🌙' : '☀️'; }
-  applyTheme(getPreferredTheme());
+/* ══════════════════════════════════════════════════════════
+   THEME
+══════════════════════════════════════════════════════════ */
+function getPreferredTheme(){return localStorage.getItem('de-theme')||'dark';}
+function applyTheme(t){
+  document.documentElement.classList.toggle('dark',t==='dark');
+  localStorage.setItem('de-theme',t);
+}
+function toggleTheme(){
+  applyTheme(document.documentElement.classList.contains('dark')?'light':'dark');
+  var btn=document.getElementById('nav-theme-toggle');
+  if(btn) btn.textContent=document.documentElement.classList.contains('dark')?'🌙':'☀️';
+}
+applyTheme(getPreferredTheme());
+
+/* ══════════════════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════════════════ */
+var activeSvcs = {db:true,cache:true,auth:true,api:true,payment:true,notif:false};
+var failureMode = 'cascade';
+var groupRule   = 'service';
+var corrWindow  = 30;
+var allAlerts   = [];
+var incidentRunning = false;
+
+/* ══════════════════════════════════════════════════════════
+   SERVICE TOGGLES
+══════════════════════════════════════════════════════════ */
+function toggleSvc(el){
+  var svc = el.dataset.svc;
+  activeSvcs[svc] = !activeSvcs[svc];
+  el.classList.toggle('on',  activeSvcs[svc]);
+  el.classList.toggle('off', !activeSvcs[svc]);
+}
+
+/* ══════════════════════════════════════════════════════════
+   MODE
+══════════════════════════════════════════════════════════ */
+function setMode(mode, el){
+  failureMode = mode;
+  document.querySelectorAll('#mode-set .mode-opt').forEach(function(b){ b.classList.remove('active'); });
+  el.classList.add('active');
+  document.getElementById('cascade-hint').classList.toggle('hidden', mode !== 'cascade');
+  document.getElementById('random-hint').classList.toggle('hidden',  mode !== 'random');
+}
+
+function setGroupRule(rule){ groupRule = rule; }
+
+function updateCorrWindow(val){
+  corrWindow = parseInt(val);
+  document.getElementById('corr-window-val').textContent = val + 's';
+}
+
+/* ══════════════════════════════════════════════════════════
+   ALERT TEMPLATES
+══════════════════════════════════════════════════════════ */
+var ALERT_TEMPLATES = {
+  db: [
+    {sev:'critical', host:'db-primary-01', msgs:['Connection pool exhausted (100/100 connections used)','Query response time P95 = 4,218ms (SLO: 500ms)','Deadlock detected: 23 transactions rolled back']},
+    {sev:'warning',  host:'db-primary-01', msgs:['Replica lag increasing: 8.3s and growing','Disk I/O wait: 78% (threshold: 40%)','Active transactions: 847 (threshold: 500)']},
+    {sev:'warning',  host:'db-replica-01', msgs:['Replication stream interrupted','Replica falling 12s behind primary']},
+    {sev:'info',     host:'db-primary-01', msgs:['Slow query log: SELECT * FROM orders WHERE user_id=... (2.1s)','Checkpoint duration: 4,302ms (normal: <200ms)']}
+  ],
+  cache: [
+    {sev:'critical', host:'cache-cluster-01', msgs:['Cache hit ratio dropped to 12% (was 94%)','Connection refused: cache-cluster-01:6379']},
+    {sev:'warning',  host:'cache-cluster-01', msgs:['Eviction rate spike: 12,340 keys/sec','Memory pressure: 89% used (threshold: 75%)']},
+    {sev:'warning',  host:'cache-cluster-02', msgs:['Cache miss: user_session_* pattern (high frequency)','Key expiry storm: 45,000 TTL expirations in 10s']},
+    {sev:'info',     host:'cache-cluster-01', msgs:['Connecting to fallback: db-primary-01 (slow path)']}
+  ],
+  auth: [
+    {sev:'critical', host:'auth-svc-pod-1', msgs:['Session validation timeout: 5,001ms (limit: 500ms)','JWT verification failures: 342/min (was 0)']},
+    {sev:'critical', host:'auth-svc-pod-2', msgs:['Health check failing: /auth/health returning 503','Circuit breaker OPEN: downstream=cache']},
+    {sev:'warning',  host:'auth-svc-pod-3', msgs:['Auth service response time P99 = 8.2s','Login success rate: 4% (was 99.7%)']},
+    {sev:'info',     host:'auth-svc-pod-1', msgs:['Fallback to DB session store: latency 4.2s']}
+  ],
+  api: [
+    {sev:'critical', host:'api-gw-01', msgs:['Error rate: 23.4% (5min avg, SLO: 0.1%)','5xx responses: 1,247 in last 60 seconds']},
+    {sev:'critical', host:'api-gw-02', msgs:['Response time P95 = 6,802ms (SLO: 500ms)','Upstream timeout: auth-svc (all pods)']},
+    {sev:'warning',  host:'api-gw-01', msgs:['Active connections: 8,421 (limit: 10,000)','Rate limiting activated: /api/v2/users (burst exceeded)']},
+    {sev:'info',     host:'api-gw-02', msgs:['Retrying upstream: attempt 3/3 failed']}
+  ],
+  payment: [
+    {sev:'critical', host:'payment-svc-01', msgs:['Transaction failure rate: 67% (last 5 min)','Payment gateway timeout: 30,002ms']},
+    {sev:'warning',  host:'payment-svc-01', msgs:['Retry queue depth: 2,847 pending transactions','Stripe webhook: no response in 45s']},
+    {sev:'info',     host:'payment-svc-01', msgs:['Idempotency check: skipping retries for safety']}
+  ],
+  notif: [
+    {sev:'warning',  host:'notif-worker-01', msgs:['Email queue depth: 15,432 (threshold: 1,000)','Push notification delivery rate: 3% (was 98%)']},
+    {sev:'warning',  host:'notif-worker-02', msgs:['Worker falling behind: processing 12 msg/s, receiving 4,200 msg/s']},
+    {sev:'info',     host:'notif-worker-01', msgs:['Backpressure activated: dropping non-critical notifications']}
+  ]
+};
+
+var SVC_LABELS = {db:'Database', cache:'Cache', auth:'Auth Svc', api:'API Gateway', payment:'Payment', notif:'Notifications'};
+var SVC_COLORS = {db:'svc-color-db', cache:'svc-color-cache', auth:'svc-color-auth', api:'svc-color-api', payment:'svc-color-payment', notif:'svc-color-notif'};
+
+/* ══════════════════════════════════════════════════════════
+   GENERATE ALERTS
+══════════════════════════════════════════════════════════ */
+function generateAlerts(){
+  var alerts = [];
+  var svcs = Object.keys(activeSvcs).filter(function(s){ return activeSvcs[s]; });
+
+  // Cascade timing offsets (ms)
+  var cascadeOffsets = {db:0, cache:900, auth:2000, api:3200, payment:4500, notif:5800};
+
+  svcs.forEach(function(svc){
+    var templates = ALERT_TEMPLATES[svc];
+    var baseOffset = failureMode === 'cascade'
+      ? (cascadeOffsets[svc] || 0)
+      : (Math.random() * 8000);
+
+    templates.forEach(function(tpl){
+      tpl.msgs.forEach(function(msg, i){
+        alerts.push({
+          svc:     svc,
+          sev:     tpl.sev,
+          host:    tpl.host,
+          msg:     msg,
+          simMs:   baseOffset + (i * 180) + (Math.random() * 300)
+        });
+      });
+    });
+  });
+
+  // Sort by simulated time
+  alerts.sort(function(a,b){ return a.simMs - b.simMs; });
+
+  // Add wall-clock timestamps (14:23:xx.xxx)
+  var baseH = 14, baseM = 23, baseS = 0;
+  alerts.forEach(function(a){
+    var totalMs = baseS * 1000 + a.simMs;
+    var s = Math.floor(totalMs / 1000);
+    var ms = Math.floor(totalMs % 1000);
+    var min = baseM + Math.floor(s / 60);
+    var sec = s % 60;
+    a.ts = baseH + ':' + String(min).padStart(2,'0') + ':' + String(sec).padStart(2,'0') + '.' + String(ms).padStart(3,'0');
+  });
+
+  return alerts;
+}
+
+/* ══════════════════════════════════════════════════════════
+   TRIGGER INCIDENT
+══════════════════════════════════════════════════════════ */
+function triggerIncident(){
+  if(incidentRunning) return;
+  incidentRunning = true;
+
+  allAlerts = generateAlerts();
+  var total = allAlerts.length;
+  var stream = document.getElementById('alert-stream');
+  var btn    = document.getElementById('trigger-btn');
+  var badge  = document.getElementById('stream-badge');
+
+  // Reset stream
+  stream.innerHTML = '';
+  btn.textContent  = '⏳ Generating alerts...';
+  btn.className    = 'run-btn-running w-full py-3 rounded-xl font-bold text-sm transition-all duration-300';
+
+  document.getElementById('trigger-progress').classList.remove('hidden');
+  document.getElementById('trigger-summary').classList.add('hidden');
+  document.getElementById('corr-output').innerHTML = '<div class="text-slate-600 text-xs text-center pt-10">— run an incident first, then apply correlation —</div>';
+  document.getElementById('analysis-box').classList.add('hidden');
+
+  // Reset stats
+  ['stat-raw','stat-incidents','stat-reduction','stat-snr'].forEach(function(id){ document.getElementById(id).textContent = '—'; });
+
+  badge.textContent = '● LIVE';
+  badge.className = 'text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 animate-pulse';
+
+  var shown = 0;
+  var maxDelay = allAlerts[allAlerts.length - 1].simMs;
+  var realDuration = Math.min(maxDelay * 0.8, 5000); // compress to max 5s
+
+  allAlerts.forEach(function(alert, idx){
+    var delay = (alert.simMs / maxDelay) * realDuration;
+    setTimeout(function(){
+      shown++;
+      appendAlert(stream, alert);
+      // Auto-scroll
+      stream.scrollTop = stream.scrollHeight;
+
+      // Progress
+      document.getElementById('progress-count').textContent = shown + ' / ' + total;
+      document.getElementById('progress-bar').style.width = Math.round(shown/total*100) + '%';
+
+      if(shown === total){
+        finishIncident(total, btn, badge);
+      }
+    }, delay);
+  });
+}
+
+function appendAlert(stream, a){
+  var row = document.createElement('div');
+  row.className = 'alert-row sev-' + a.sev;
+  row.innerHTML =
+    '<span class="sev-badge ' + a.sev + '">' + a.sev.toUpperCase().slice(0,4) + '</span>' +
+    '<span class="alert-ts">' + a.ts + '</span>' +
+    '<span class="alert-svc ' + SVC_COLORS[a.svc] + '">' + SVC_LABELS[a.svc] + '</span>' +
+    '<span class="alert-msg">' + escHtml(a.msg) + '</span>';
+  stream.appendChild(row);
+}
+
+function escHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function finishIncident(total, btn, badge){
+  incidentRunning = false;
+  btn.textContent = '✅ Incident Complete — Run Again';
+  btn.className   = 'run-btn-done w-full py-3 rounded-xl font-bold text-sm transition-all duration-300';
+  setTimeout(function(){ btn.textContent='🚨 Trigger Incident'; btn.className='run-btn-idle w-full py-3 rounded-xl font-bold text-sm transition-all duration-300'; }, 3000);
+
+  badge.textContent = '✓ Done';
+  badge.className = 'text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400';
+  badge.classList.remove('animate-pulse');
+
+  var svcsHit = new Set(allAlerts.map(function(a){ return a.svc; })).size;
+  document.getElementById('total-alerts-label').textContent = total + ' alerts';
+  document.getElementById('total-svcs-label').textContent   = svcsHit + ' services';
+  document.getElementById('trigger-summary').classList.remove('hidden');
+
+  document.getElementById('stat-raw').textContent = total;
+  drawTimelineChart();
+}
+
+/* ══════════════════════════════════════════════════════════
+   CORRELATION ENGINE
+══════════════════════════════════════════════════════════ */
+function runCorrelation(){
+  if(!allAlerts.length){
+    document.getElementById('corr-output').innerHTML = '<div class="text-amber-400 text-xs text-center pt-6">⚠️ Trigger an incident first.</div>';
+    return;
+  }
+
+  var windowMs = corrWindow * 1000;
+  var groups   = {};
+
+  allAlerts.forEach(function(a){
+    var bucket = Math.floor(a.simMs / windowMs);
+    var key;
+    if(groupRule === 'service') key = a.svc + '_' + bucket;
+    else if(groupRule === 'host') key = a.host + '_' + bucket;
+    else key = 'incident_' + bucket;
+
+    if(!groups[key]) groups[key] = {alerts:[], key:key, svc:a.svc, host:a.host, bucket:bucket};
+    groups[key].alerts.push(a);
+  });
+
+  var incidents = Object.values(groups).sort(function(a,b){
+    return a.alerts[0].simMs - b.alerts[0].simMs;
+  });
+
+  var out = document.getElementById('corr-output');
+  out.innerHTML = '';
+
+  incidents.forEach(function(inc, i){
+    var crits = inc.alerts.filter(function(a){ return a.sev==='critical'; }).length;
+    var warns = inc.alerts.filter(function(a){ return a.sev==='warning';  }).length;
+    var svcs  = [...new Set(inc.alerts.map(function(a){ return a.svc; }))];
+    var topSev = crits > 0 ? 'critical' : warns > 0 ? 'warning' : 'info';
+    var firstTs = inc.alerts[0].ts;
+    var lastTs  = inc.alerts[inc.alerts.length-1].ts;
+    var rootHint = getRootCauseHint(inc.alerts, groupRule);
+
+    var card = document.createElement('div');
+    card.className = 'incident-card ' + topSev;
+    card.innerHTML =
+      '<div class="flex items-start justify-between gap-2 mb-2">' +
+        '<div class="flex items-center gap-2">' +
+          '<span class="text-sm font-bold ' + (topSev==='critical'?'text-red-400':topSev==='warning'?'text-amber-400':'text-indigo-400') + '">' +
+            (topSev==='critical'?'🔴':'topSev'==='warning'?'🟡':'🔵') +
+            ' Incident #' + (i+1) +
+          '</span>' +
+          '<span class="text-xs text-slate-500">' + firstTs + ' → ' + lastTs + '</span>' +
+        '</div>' +
+        '<span class="text-xs font-bold px-2 py-0.5 rounded-full ' +
+          (crits>0?'bg-red-500/20 text-red-400':warns>0?'bg-amber-500/20 text-amber-400':'bg-indigo-500/20 text-indigo-400') + '">' +
+          inc.alerts.length + ' alerts' +
+        '</span>' +
+      '</div>' +
+      '<div class="text-xs text-slate-400 mb-2">' +
+        '<span class="text-slate-300 font-semibold">Services: </span>' +
+        svcs.map(function(s){ return '<span class="' + SVC_COLORS[s] + '">' + SVC_LABELS[s] + '</span>'; }).join(', ') +
+        ' · <span class="text-slate-500">Host: ' + inc.alerts[0].host + '</span>' +
+      '</div>' +
+      '<div class="text-xs p-2 rounded-lg" style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.12)">' +
+        '<span class="text-indigo-400 font-semibold">Root cause: </span>' +
+        '<span class="text-slate-300">' + rootHint + '</span>' +
+      '</div>';
+    out.appendChild(card);
+  });
+
+  // Update stats
+  var total = allAlerts.length;
+  var inc   = incidents.length;
+  var red   = Math.round((1 - inc/total)*100);
+  var snr   = (inc/total*100).toFixed(1);
+
+  document.getElementById('stat-incidents').textContent = inc;
+  document.getElementById('stat-reduction').textContent = red + '%';
+  document.getElementById('stat-snr').textContent = snr + '%';
+
+  // Time to understand
+  var rawMin  = Math.max(2, Math.round(total * 0.18));
+  var corrSec = Math.max(15, inc * 8);
+  document.getElementById('triage-raw-label').textContent  = '~' + rawMin + ' min';
+  document.getElementById('triage-corr-label').textContent = '~' + corrSec + ' sec';
+  document.getElementById('triage-corr-bar').style.width   = Math.round(corrSec / (rawMin*60) * 100) + '%';
+
+  showAnalysis(total, inc, red, failureMode, groupRule, corrWindow);
+}
+
+function getRootCauseHint(alerts, rule){
+  var crits = alerts.filter(function(a){ return a.sev==='critical'; });
+  if(!crits.length) crits = alerts;
+  var first = crits[0];
+  if(rule === 'service'){
+    return SVC_LABELS[first.svc] + ': ' + first.msg;
+  } else if(rule === 'host'){
+    return first.host + ': ' + first.msg;
+  } else {
+    var svcs = [...new Set(alerts.map(function(a){ return a.svc; }))];
+    return svcs.length > 1
+      ? 'Multi-service cascade starting with ' + SVC_LABELS[first.svc] + ': ' + first.msg
+      : SVC_LABELS[first.svc] + ': ' + first.msg;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   ANALYSIS
+══════════════════════════════════════════════════════════ */
+function showAnalysis(total, inc, red, mode, rule, window_s){
+  var rawMin = Math.max(2, Math.round(total * 0.18));
+  var corrSec = Math.max(15, inc * 8);
+  var speedup = Math.round((rawMin * 60) / corrSec);
+
+  var modeText = mode === 'cascade'
+    ? 'Because you chose <strong>cascade mode</strong>, the alerts arrived in waves — Database first, then Cache, Auth, and API Gateway in sequence. This is the classic pattern of a downstream database failure pulling the entire stack down.'
+    : 'In <strong>random mode</strong>, alerts arrived without an obvious sequence — mimicking how real incidents look when multiple unrelated issues hit at once. Correlation windows are especially valuable here because the pattern is invisible in raw form.';
+
+  var ruleText;
+  if(rule === 'service')
+    ruleText = 'Grouping by <strong>service</strong> gives you one incident per team — the on-call for Database sees their incident, the API team sees theirs. Clean handoffs, no ambiguity.';
+  else if(rule === 'host')
+    ruleText = 'Grouping by <strong>host</strong> is useful when a single machine is the culprit — a bad node pulls multiple services down and all evidence lands in one incident card.';
+  else
+    ruleText = '<strong>Merge All</strong> is the most aggressive setting — one incident for the whole window. Best for small systems where one outage truly is one event.';
+
+  var box = document.getElementById('analysis-box');
+  document.getElementById('analysis-text').innerHTML =
+    '<p class="mb-2">' + modeText + '</p>' +
+    '<p class="mb-2">With a <strong>' + window_s + 's correlation window</strong> and ' + rule + ' grouping, your <strong>' + total + ' raw alerts</strong> collapsed into <strong>' + inc + ' incidents</strong> — a <strong class="text-emerald-400">' + red + '% noise reduction</strong>. ' + ruleText + '</p>' +
+    '<p>An on-call engineer scanning ' + total + ' alerts would take roughly <strong class="text-red-400">~' + rawMin + ' minutes</strong> to identify the root cause. With correlated incidents, the same engineer reads ' + inc + ' cards and understands the situation in <strong class="text-emerald-400">~' + corrSec + ' seconds</strong> — roughly <strong>' + speedup + '×</strong> faster. At 3am, that difference is the gap between a managed incident and a full outage.</p>';
+
+  box.classList.remove('hidden');
+}
+
+/* ══════════════════════════════════════════════════════════
+   TIMELINE CHART
+══════════════════════════════════════════════════════════ */
+function drawTimelineChart(){
+  var canvas = document.getElementById('timeline-chart');
+  if(!canvas || !allAlerts.length) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.offsetWidth || 600;
+  var H = 120;
+  canvas.width  = W;
+  canvas.height = H;
+
+  var isDark = document.documentElement.classList.contains('dark');
+  var gridColor = isDark ? 'rgba(99,102,241,0.1)' : '#e2e8f0';
+  var textColor = isDark ? '#64748b' : '#94a3b8';
+
+  // Bucket into 20 time slots
+  var maxMs = allAlerts[allAlerts.length-1].simMs + 500;
+  var buckets = new Array(20).fill(0);
+  allAlerts.forEach(function(a){
+    var b = Math.min(19, Math.floor(a.simMs / maxMs * 20));
+    buckets[b]++;
+  });
+
+  var maxB = Math.max(...buckets, 1);
+  var barW = (W - 40) / 20;
+  var padL = 30, padB = 25, padT = 10;
+  var chartH = H - padB - padT;
+
+  ctx.clearRect(0,0,W,H);
+
+  // Grid lines
+  for(var g=0;g<=4;g++){
+    var y = padT + chartH * (1 - g/4);
+    ctx.beginPath(); ctx.strokeStyle = gridColor; ctx.lineWidth = 1;
+    ctx.moveTo(padL, y); ctx.lineTo(W-10, y); ctx.stroke();
+    ctx.fillStyle = textColor; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(Math.round(maxB*g/4), padL-4, y+3);
+  }
+
+  // Bars
+  buckets.forEach(function(count, i){
+    var x = padL + i * barW;
+    var bh = (count / maxB) * chartH;
+    var y = padT + chartH - bh;
+
+    // Gradient by severity-ish: first third = red, middle = amber, rest = indigo
+    var frac = i / 19;
+    var r = frac < 0.4 ? 239 : frac < 0.7 ? 245 : 99;
+    var g2 = frac < 0.4 ? 68  : frac < 0.7 ? 158 : 102;
+    var b  = frac < 0.4 ? 68  : frac < 0.7 ? 11  : 241;
+    ctx.fillStyle = 'rgba(' + r + ',' + g2 + ',' + b + ',0.7)';
+    ctx.fillRect(x + 2, y, barW - 4, bh);
+  });
+
+  // X axis labels
+  ctx.fillStyle = textColor; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ['0s','','','',String(Math.round(maxMs/4/1000))+'s','','','','','',
+   String(Math.round(maxMs/2/1000))+'s','','','','','','','','',
+   String(Math.round(maxMs/1000))+'s'].forEach(function(lbl,i){
+    if(lbl) ctx.fillText(lbl, padL + i*barW + barW/2, H - 5);
+  });
+
+  // Label
+  ctx.fillStyle = isDark ? '#a5b4fc' : '#6366f1';
+  ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('Alerts / time slot', padL, padT + 8);
+}
+
+/* ══════════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════════ */
+window.addEventListener('resize', drawTimelineChart);
 </script>
 <script src="shared/nav.js"></script>
 </body>
