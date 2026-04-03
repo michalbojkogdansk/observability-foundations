@@ -448,14 +448,17 @@ function generateAlerts(){
   var alerts = [];
   var svcs = Object.keys(activeSvcs).filter(function(s){ return activeSvcs[s]; });
 
-  // Cascade timing offsets (ms)
-  var cascadeOffsets = {db:0, cache:900, auth:2000, api:3200, payment:4500, notif:5800};
+  // Cascade timing offsets (seconds → ms). Spread over ~3 minutes so the
+  // correlation window slider (5 s – 120 s) produces a visible difference.
+  var cascadeOffsets = {db:0, cache:20, auth:48, api:80, payment:115, notif:155};
 
   svcs.forEach(function(svc){
     var templates = ALERT_TEMPLATES[svc];
+    // Each service fires alerts spread over ~40 s; cascade starts at its offset,
+    // random mode scatters each service across the full 3-min window.
     var baseOffset = failureMode === 'cascade'
-      ? (cascadeOffsets[svc] || 0)
-      : (Math.random() * 8000);
+      ? (cascadeOffsets[svc] || 0) * 1000
+      : Math.random() * 160000;
 
     templates.forEach(function(tpl){
       tpl.msgs.forEach(function(msg, i){
@@ -464,7 +467,8 @@ function generateAlerts(){
           sev:     tpl.sev,
           host:    tpl.host,
           msg:     msg,
-          simMs:   baseOffset + (i * 180) + (Math.random() * 300)
+          // Space alerts ~8 s apart with up to 3 s of jitter
+          simMs:   baseOffset + (i * 8000) + (Math.random() * 3000)
         });
       });
     });
@@ -599,7 +603,13 @@ function runCorrelation(){
   });
 
   var out = document.getElementById('corr-output');
-  out.innerHTML = '';
+  var ruleLabel = groupRule === 'service' ? 'by service' : groupRule === 'host' ? 'by host' : 'merge all';
+  out.innerHTML =
+    '<div class="text-xs text-slate-500 mb-3 pb-2" style="border-bottom:1px solid rgba(99,102,241,0.15)">' +
+      '⚙️ Window: <span class="text-indigo-400 font-bold">' + corrWindow + 's</span> &nbsp;·&nbsp; ' +
+      'Group: <span class="text-indigo-400 font-bold">' + ruleLabel + '</span> &nbsp;·&nbsp; ' +
+      allAlerts.length + ' alerts → <span class="text-emerald-400 font-bold">' + Object.keys(groups).length + ' incidents</span>' +
+    '</div>';
 
   incidents.forEach(function(inc, i){
     var crits = inc.alerts.filter(function(a){ return a.sev==='critical'; }).length;
