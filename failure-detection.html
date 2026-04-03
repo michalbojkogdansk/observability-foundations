@@ -725,16 +725,17 @@ function drawTimelineChart(){
   var gridColor = isDark ? 'rgba(99,102,241,0.1)' : '#e2e8f0';
   var textColor = isDark ? '#64748b' : '#94a3b8';
 
-  // Bucket into 20 time slots
+  // Bucket into 10 time slots
   var maxMs = allAlerts[allAlerts.length-1].simMs + 500;
-  var buckets = new Array(20).fill(0);
+  var NUM_BUCKETS = 10;
+  var buckets = new Array(NUM_BUCKETS).fill(0);
   allAlerts.forEach(function(a){
-    var b = Math.min(19, Math.floor(a.simMs / maxMs * 20));
+    var b = Math.min(NUM_BUCKETS-1, Math.floor(a.simMs / maxMs * NUM_BUCKETS));
     buckets[b]++;
   });
 
-  var maxB = Math.max(...buckets, 1);
-  var barW = (W - 40) / 20;
+  var maxB = Math.max.apply(null, buckets.concat([1]));
+  var barW = (W - 40) / NUM_BUCKETS;
   var padL = 30, padB = 25, padT = 10;
   var chartH = H - padB - padT;
 
@@ -756,7 +757,7 @@ function drawTimelineChart(){
     var y = padT + chartH - bh;
 
     // Gradient by severity-ish: first third = red, middle = amber, rest = indigo
-    var frac = i / 19;
+    var frac = i / (NUM_BUCKETS - 1);
     var r = frac < 0.4 ? 239 : frac < 0.7 ? 245 : 99;
     var g2 = frac < 0.4 ? 68  : frac < 0.7 ? 158 : 102;
     var b  = frac < 0.4 ? 68  : frac < 0.7 ? 11  : 241;
@@ -764,13 +765,14 @@ function drawTimelineChart(){
     ctx.fillRect(x + 2, y, barW - 4, bh);
   });
 
-  // X axis labels
+  // X axis labels — show 0s, 25%, 50%, 75%, 100%
   ctx.fillStyle = textColor; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
-  ['0s','','','',String(Math.round(maxMs/4/1000))+'s','','','','','',
-   String(Math.round(maxMs/2/1000))+'s','','','','','','','','',
-   String(Math.round(maxMs/1000))+'s'].forEach(function(lbl,i){
-    if(lbl) ctx.fillText(lbl, padL + i*barW + barW/2, H - 5);
-  });
+  for(var i=0; i<NUM_BUCKETS; i++){
+    if(i===0 || i===Math.floor(NUM_BUCKETS/4) || i===Math.floor(NUM_BUCKETS/2) || i===Math.floor(NUM_BUCKETS*3/4) || i===NUM_BUCKETS-1){
+      var lbl = Math.round(maxMs * i / NUM_BUCKETS / 1000) + 's';
+      ctx.fillText(lbl, padL + i*barW + barW/2, H - 5);
+    }
+  }
 
   // Label
   ctx.fillStyle = isDark ? '#a5b4fc' : '#6366f1';
