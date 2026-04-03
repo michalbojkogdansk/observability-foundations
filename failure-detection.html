@@ -316,12 +316,6 @@ html:not(.dark) .stat-box { background:rgba(248,250,252,0.95); border:1px solid 
       </div>
     </div>
 
-    <!-- Alert volume over simulated time -->
-    <div class="card p-4 mb-4">
-      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Alert Volume Over Time</div>
-      <canvas id="timeline-chart" height="120" style="width:100%"></canvas>
-    </div>
-
     <!-- Dynamic analysis -->
     <div id="analysis-box" class="p-4 rounded-xl text-sm text-slate-300 hidden" style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.18);">
       <div class="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2">🧠 What This Means for Your Team</div>
@@ -574,7 +568,7 @@ function finishIncident(total, btn, badge){
   document.getElementById('trigger-summary').classList.remove('hidden');
 
   document.getElementById('stat-raw').textContent = total;
-  drawTimelineChart();
+
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -710,101 +704,8 @@ function showAnalysis(total, inc, red, mode, rule, window_s){
 }
 
 /* ══════════════════════════════════════════════════════════
-   TIMELINE CHART
-══════════════════════════════════════════════════════════ */
-function drawTimelineChart(){
-  var canvas = document.getElementById('timeline-chart');
-  if(!canvas || !allAlerts.length) return;
-  var ctx = canvas.getContext('2d');
-  var W = canvas.offsetWidth || 600;
-  var H = 120;
-  canvas.width  = W;
-  canvas.height = H;
-
-  var isDark = document.documentElement.classList.contains('dark');
-  var gridColor = isDark ? 'rgba(99,102,241,0.1)' : '#e2e8f0';
-  var textColor = isDark ? '#64748b' : '#94a3b8';
-
-  // Bucket into 20 time slots
-  var maxMs = allAlerts[allAlerts.length-1].simMs + 500;
-  var NUM_BUCKETS = 20;
-  var buckets = new Array(NUM_BUCKETS).fill(0);
-  allAlerts.forEach(function(a){
-    var b = Math.min(NUM_BUCKETS-1, Math.floor(a.simMs / maxMs * NUM_BUCKETS));
-    buckets[b]++;
-  });
-
-  var maxB = Math.max.apply(null, buckets.concat([1]));
-  var padL = 34, padB = 22, padT = 14, padR = 12;
-  var chartW = W - padL - padR;
-  var chartH = H - padB - padT;
-
-  ctx.clearRect(0,0,W,H);
-
-  // Grid lines + Y labels
-  for(var g=0;g<=3;g++){
-    var gy = padT + chartH * (1 - g/3);
-    ctx.beginPath(); ctx.strokeStyle = gridColor; ctx.lineWidth = 1;
-    ctx.moveTo(padL, gy); ctx.lineTo(W - padR, gy); ctx.stroke();
-    ctx.fillStyle = textColor; ctx.font = '9px sans-serif'; ctx.textAlign = 'right';
-    ctx.fillText(Math.round(maxB*g/3), padL - 4, gy + 3);
-  }
-
-  // Build point coordinates
-  var pts = buckets.map(function(count, i){
-    return {
-      x: padL + (i + 0.5) * (chartW / NUM_BUCKETS),
-      y: padT + chartH - (count / maxB) * chartH
-    };
-  });
-
-  // Filled area (gradient)
-  var grad = ctx.createLinearGradient(0, padT, 0, padT + chartH);
-  grad.addColorStop(0,   isDark ? 'rgba(99,102,241,0.5)' : 'rgba(99,102,241,0.35)');
-  grad.addColorStop(1,   isDark ? 'rgba(99,102,241,0.0)' : 'rgba(99,102,241,0.0)');
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, padT + chartH);
-  pts.forEach(function(p){ ctx.lineTo(p.x, p.y); });
-  ctx.lineTo(pts[pts.length-1].x, padT + chartH);
-  ctx.closePath();
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  // Line
-  ctx.beginPath();
-  ctx.strokeStyle = isDark ? '#818cf8' : '#6366f1';
-  ctx.lineWidth = 2;
-  ctx.lineJoin = 'round';
-  pts.forEach(function(p, i){ i===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y); });
-  ctx.stroke();
-
-  // Dots on non-zero points
-  pts.forEach(function(p, i){
-    if(buckets[i] === 0) return;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
-    ctx.fillStyle = isDark ? '#a5b4fc' : '#4f46e5';
-    ctx.fill();
-  });
-
-  // X axis labels — 5 evenly spaced
-  ctx.fillStyle = textColor; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-  for(var i=0; i<=4; i++){
-    var bi = Math.round(i * (NUM_BUCKETS-1) / 4);
-    var lbl = Math.round(maxMs * bi / NUM_BUCKETS / 1000) + 's';
-    ctx.fillText(lbl, padL + (bi + 0.5) * (chartW / NUM_BUCKETS), H - 5);
-  }
-
-  // Title
-  ctx.fillStyle = isDark ? '#a5b4fc' : '#6366f1';
-  ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText('alerts / slot', padL + 2, padT - 2);
-}
-
-/* ══════════════════════════════════════════════════════════
    INIT
 ══════════════════════════════════════════════════════════ */
-window.addEventListener('resize', drawTimelineChart);
 </script>
 <script src="shared/nav.js"></script>
 </body>
