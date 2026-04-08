@@ -260,10 +260,27 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
           <button class="mode-opt" onclick="s3SetBuckets('custom')">Custom</button>
         </div>
         <div id="s3-bucket-explain" class="hidden mt-2 mb-1 p-3 rounded-lg text-xs leading-relaxed" style="background:rgba(15,23,42,0.95);border:1px solid rgba(99,102,241,0.3);color:#f1f5f9;">
-          <div style="margin-bottom:8px;"><span style="color:#f59e0b;font-weight:700;">Default Prometheus</span> — 11 boundaries from 5ms to 10,000ms (<code>5 10 25 50 100 250 500 1000 2500 5000 10000</code>). The chart clips to the data range, so boundaries outside your latency profile are not visible — typically you'll see 8–9 lines. Wide gaps in the middle (250ms–500ms) cause large interpolation errors near SLO thresholds. <em>Most teams never change this.</em></div>
-          <div style="margin-bottom:8px;"><span style="color:#818cf8;font-weight:700;">Coarse</span> — only 5 buckets across a wide range. Fast to query, minimal cardinality cost, but very low resolution. Useful for high-throughput background jobs where rough visibility is enough. <em>Expect p95/p99 errors of 100ms+.</em></div>
-          <div style="margin-bottom:8px;"><span style="color:#34d399;font-weight:700;">Tuned</span> — buckets clustered tightly around your actual SLO threshold. Maximises interpolation accuracy where it matters most. Requires knowing your latency profile upfront. <em>This is the best choice once you have real traffic data.</em></div>
-          <div><span style="color:#60a5fa;font-weight:700;">Custom</span> — you define the boundaries. Paste comma-separated values in milliseconds. Use this to experiment with how bucket placement directly affects the interpolation error and SLO verdict shown below.</div>
+          <div style="font-weight:700;margin-bottom:10px;color:#e2e8f0;font-size:0.8rem;">How bucket boundaries are defined</div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:start;">
+            <div style="color:#f59e0b;font-weight:700;white-space:nowrap;">🟡 Default Prometheus</div>
+            <div>11 fixed boundaries: <code style="background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:3px;">5 10 25 50 100 250 500 1000 2500 5000 10000 ms</code><br>
+            Built into Prometheus for general HTTP latency. The chart clips to your data's range, so you'll typically see 8–9 lines. <strong style="color:#fbbf24;">Wide 250→500ms gap causes large SLO interpolation errors.</strong> Most teams never change this.</div>
+
+            <div style="color:#818cf8;font-weight:700;white-space:nowrap;">🟣 Coarse</div>
+            <div>5 boundaries only: <code style="background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:3px;">100 500 1000 5000 10000 ms</code><br>
+            Minimal cardinality cost — good for high-throughput background jobs where you only need rough visibility. <strong style="color:#f87171;">Expect p95/p99 errors over 100ms.</strong></div>
+
+            <div style="color:#34d399;font-weight:700;white-space:nowrap;">🟢 Tuned</div>
+            <div>9 boundaries clustered near your SLO: <code style="background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:3px;">50 100 150 200 300 500 750 1000 2000 ms</code><br>
+            Dense around the threshold that matters most. <strong style="color:#34d399;">Best interpolation accuracy for SLOs</strong> — but requires knowing your latency profile first.</div>
+
+            <div style="color:#60a5fa;font-weight:700;white-space:nowrap;">🔵 Custom</div>
+            <div>You define the boundaries in milliseconds (comma-separated).<br>
+            Experiment directly to see how bucket placement shifts the interpolation error % and changes the SLO verdict below.</div>
+          </div>
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(99,102,241,0.2);color:#94a3b8;">
+            💡 <em>Rule of thumb: place at least one boundary within 10% on each side of your SLO target to keep interpolation error below 5%.</em>
+          </div>
         </div>
       </div>
     </div>
@@ -1013,10 +1030,22 @@ function s3UpdateBucketAnalysis(){
     var ins=document.getElementById('s3-insight');
     ins.classList.remove('hidden');
     var bucketName={'default':'Default Prometheus','coarse':'Coarse (5 buckets)','tuned':'Tuned buckets','custom':'Custom buckets'}[s3BucketPreset];
-    ins.innerHTML='<strong>'+bucketName+'</strong> — interpolation error: <strong style="color:'+(err>20?'#f87171':err>5?'#fbbf24':'#34d399')+'">'+Math.round(err)+'%</strong>. '
-      +(err>20?'This error means Prometheus could report your p'+sloPct+' as '+Math.round(bucketEstimate)+'ms when the true value is '+Math.round(trueP)+'ms — a <strong>'+Math.round(Math.abs(bucketEstimate-trueP))+'ms blind spot</strong>. Default Prometheus buckets were designed for general-purpose HTTP latency — not high-resolution SLOs. Interpolation error across wide bucket boundaries can be as large as the gap between consecutive buckets.'
-        :err>5?'Moderate error. Consider shifting bucket boundaries closer to your p50–p99 range to sharpen the estimate.'
-        :'Excellent bucket placement. Less than 5% interpolation error means your Prometheus histogram accurately reflects your true latency percentiles.');
+    var errColor=err>20?'#f87171':err>5?'#fbbf24':'#34d399';
+    var blindSpot=Math.round(Math.abs(bucketEstimate-trueP));
+    var contextMsg='';
+    if(err>20){
+      if(s3BucketPreset==='default') contextMsg='Default Prometheus buckets were designed for general-purpose HTTP latency — not high-resolution SLOs. The wide 250ms→500ms gap is the main culprit. Interpolation error can be as large as the gap between consecutive buckets.';
+      else if(s3BucketPreset==='coarse') contextMsg='With only 5 boundaries spread across a wide range, large gaps are unavoidable. Coarse buckets trade accuracy for low cardinality — acceptable for background jobs, not for SLOs.';
+      else if(s3BucketPreset==='tuned') contextMsg='Tuned buckets are clustered near common thresholds — but if your SLO target falls in a gap, error can still be high. Try tightening the boundaries around your exact SLO value.';
+      else contextMsg='Your custom boundaries leave a wide gap around the p'+sloPct+' value. Move boundaries to within 10–15% of '+Math.round(trueP)+'ms to reduce the error.';
+    } else if(err>5){
+      contextMsg='Moderate error. Consider shifting bucket boundaries closer to your p'+sloPct+' range (around '+Math.round(trueP)+'ms) to sharpen the estimate.';
+    } else {
+      contextMsg='Excellent bucket placement. Less than 5% interpolation error means your histogram accurately reflects your true latency percentiles.';
+    }
+    ins.innerHTML='<strong>'+bucketName+'</strong> — interpolation error: <strong style="color:'+errColor+'">'+Math.round(err)+'%</strong>. '
+      +(err>20?'Prometheus reports p'+sloPct+' as <strong>'+Math.round(bucketEstimate)+'ms</strong>, true value is <strong>'+Math.round(trueP)+'ms</strong> — a <strong style="color:#f87171;">'+blindSpot+'ms blind spot</strong>. ':'')
+      +contextMsg;
   }
 }
 
