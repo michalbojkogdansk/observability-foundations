@@ -146,7 +146,7 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
       <div>
         <div class="text-xs text-slate-400 mb-1 font-semibold">Traffic pattern
           <button onclick="this.nextElementSibling.classList.toggle('hidden')" style="margin-left:6px;background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.75rem;padding:0;" title="What do these mean?">ⓘ What are these?</button>
-          <div class="hidden mt-2 mb-1 p-3 rounded-lg text-xs text-slate-300 leading-relaxed" style="background:rgba(30,41,59,0.7);border:1px solid rgba(99,102,241,0.2);max-width:480px;">
+          <div class="hidden mt-2 mb-1 p-3 rounded-lg text-xs leading-relaxed" style="background:rgba(15,23,42,0.95);border:1px solid rgba(99,102,241,0.4);max-width:480px;color:#f1f5f9;">
             <div class="mb-2"><span class="font-bold text-indigo-300">📊 Normal</span> — Most requests cluster around a single average with equal tails. A well-tuned internal API with consistent load. Predictable and stable — <em>rare in practice</em>.</div>
             <div class="mb-2"><span class="font-bold text-indigo-300">📈 Right-skewed</span> — Most requests are fast, but a long tail of slow outliers drags the mean upward. Classic cache-miss pattern: 80% return in 50ms, 5% wait for DB → 2s+. <em>The most common real-world shape.</em> Mean is misleading here — p99 tells the real story.</div>
             <div><span class="font-bold text-indigo-300">🔔 Bimodal</span> — Two distinct clusters with a valley between them. Signals two hidden populations: e.g. authenticated (fast, in-memory) vs unauthenticated (slow, DB lookup). A single mean falls in the valley and <em>describes neither group</em>. Split and measure separately.</div>
