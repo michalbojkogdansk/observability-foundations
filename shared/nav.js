@@ -7,6 +7,7 @@
     { id: 'regression', label: 'Regression', icon: '📈', href: 'regression.html' },
     { id: 'spikes', label: 'Spikes & Anomalies', icon: '⚡', href: 'spikes.html' },
     { id: 'logdriven', label: 'Log-Driven Dev', icon: '📋', href: 'log-driven.html' },
+    { id: 'bimodal', label: 'Bimodal Latency', icon: '📡', href: 'bimodal.html' },
   ];
 
   // Determine active page

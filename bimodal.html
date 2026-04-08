@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bimodal Latency | DE Foundations</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="shared/style.css" />
+  <script>
+    (function() {
+      var t = localStorage.getItem('de-theme') || 'dark';
+      document.documentElement.classList.toggle('dark', t === 'dark');
+    })();
+    function toggleTheme() {
+      var d = document.documentElement.classList.contains('dark');
+      document.documentElement.classList.toggle('dark', !d);
+      localStorage.setItem('de-theme', d ? 'light' : 'dark');
+    }
+  </script>
+  <style>
+    .arch-arrow { color: #94a3b8; font-size: 1.1rem; }
+    .arch-node { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.7rem; border-radius: 0.5rem; font-family: monospace; font-size: 0.8rem; font-weight: 600; }
+    .arch-browser { background: rgba(59,130,246,0.12); color: #3b82f6; border: 1px solid rgba(59,130,246,0.3); }
+    .arch-worker { background: rgba(249,115,22,0.12); color: #f97316; border: 1px solid rgba(249,115,22,0.3); }
+    .arch-redis  { background: rgba(34,197,94,0.12); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+    .arch-hyper  { background: rgba(168,85,247,0.12); color: #a855f7; border: 1px solid rgba(168,85,247,0.3); }
+    .arch-pg     { background: rgba(239,68,68,0.12); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+    .stat-box { border-radius: 0.75rem; padding: 0.75rem 1rem; border: 1px solid; }
+    #hist-chart { height: 300px !important; }
+    .run-hist-canvas { height: 180px !important; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div id="site-nav"></div>
+
+  <header class="hero-gradient border-b border-slate-200/50 dark:border-slate-700/50 px-4 md:px-8 py-8">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="text-2xl">📡</span>
+      <h1 class="text-2xl md:text-3xl font-bold text-slate-800 dark:text-slate-100">Bimodal Latency Distribution</h1>
+      <span class="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30 flex items-center gap-1">
+        <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block"></span> Live
+      </span>
+    </div>
+    <p class="text-slate-600 dark:text-slate-400 max-w-3xl text-sm md:text-base mb-4">
+      Real HTTP requests to a live Cloudflare Worker &rarr; Azure PostgreSQL + Redis cache.
+      Watch how cache-aside creates <strong>two distinct latency peaks</strong> &mdash;
+      the bimodal shape your <em>average</em> metric completely hides.
+    </p>
+    <div class="flex flex-wrap items-center gap-1.5 text-sm">
+      <span class="arch-node arch-browser">&#128187; Browser</span>
+      <span class="arch-arrow">&rarr;</span>
+      <span class="arch-node arch-worker">&#9889; CF Worker</span>
+      <span class="arch-arrow">&rarr;</span>
+      <span class="arch-node arch-redis">&#9889; Redis Cache</span>
+      <span class="text-slate-400 text-xs italic mx-1">or miss &rarr;</span>
+      <span class="arch-node arch-hyper">&#128279; Hyperdrive</span>
+      <span class="arch-arrow">&rarr;</span>
+      <span class="arch-node arch-pg">&#128024; Azure PostgreSQL</span>
+    </div>
+  </header>
+
+  <main class="px-4 md:px-8 pb-8">
+
+    <!-- Controls -->
+    <section class="mt-6 glass-card p-6">
+      <h2 class="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-5">&#9881;&#65039; Demo Controls</h2>
+      <div class="flex flex-wrap gap-6 items-start">
+
+        <!-- Cache Mode -->
+        <div>
+          <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Cache Mode</label>
+          <div class="flex gap-2" id="mode-btns">
+            <button onclick="setMode('mixed',this)" class="mode-btn active px-4 py-2 rounded-lg text-sm font-medium border transition-all border-indigo-500 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300">&#128260; Mixed (Bimodal)</button>
+            <button onclick="setMode('warm',this)" class="mode-btn px-4 py-2 rounded-lg text-sm font-medium border transition-all border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400">&#9889; Cache Warmed</button>
+            <button onclick="setMode('cold',this)" class="mode-btn px-4 py-2 rounded-lg text-sm font-medium border transition-all border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400">&#128034; No Cache</button>
+          </div>
+          <p id="mode-desc" class="mt-2 text-xs text-slate-500 dark:text-slate-400 max-w-sm">80% cached IDs + 20% fresh DB hits &mdash; reveals the bimodal distribution</p>
+        </div>
+
+        <!-- Count -->
+        <div>
+          <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Request Count</label>
+          <div class="flex gap-2" id="count-btns">
+            <button onclick="setCount(50,this)" class="count-btn px-3 py-2 rounded-lg text-sm font-medium border transition-all border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400">50</button>
+            <button onclick="setCount(100,this)" class="count-btn active px-3 py-2 rounded-lg text-sm font-medium border transition-all border-indigo-500 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300">100</button>
+            <button onclick="setCount(200,this)" class="count-btn px-3 py-2 rounded-lg text-sm font-medium border transition-all border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400">200</button>
+            <button onclick="setCount(500,this)" class="count-btn px-3 py-2 rounded-lg text-sm font-medium border transition-all border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400">500</button>
+          </div>
+        </div>
+
+        <!-- Concurrency -->
+        <div>
+          <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Concurrency</label>
+          <div class="flex gap-2" id="conc-btns">
+            <button onclick="setConc(1,this)" class="conc-btn px-3 py-2 rounded-lg text-sm font-medium border transition-all border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400">1</button>
+            <button onclick="setConc(5,this)" class="conc-btn active px-3 py-2 rounded-lg text-sm font-medium border transition-all border-indigo-500 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300">5</button>
+            <button onclick="setConc(10,this)" class="conc-btn px-3 py-2 rounded-lg text-sm font-medium border transition-all border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400">10</button>
+            <button onclick="setConc(20,this)" class="conc-btn px-3 py-2 rounded-lg text-sm font-medium border transition-all border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400">20</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action row -->
+      <div class="mt-5 flex flex-wrap items-center gap-3">
+        <button id="fire-btn" onclick="runBenchmark()"
+          class="px-6 py-2.5 rounded-lg font-semibold text-sm bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-sm">
+          &#128640; Fire Requests
+        </button>
+        <button onclick="resetResults()" class="px-4 py-2.5 rounded-lg font-medium text-sm border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:border-slate-400 transition-all">
+          &#8635; Reset
+        </button>
+        <div id="progress-bar-wrap" class="hidden flex-1 min-w-48">
+          <div class="h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+            <div id="progress-bar" class="h-2 bg-indigo-500 rounded-full transition-all duration-100" style="width:0%"></div>
+          </div>
+        </div>
+        <span id="progress-text" class="text-sm text-slate-500 dark:text-slate-400 font-mono"></span>
+      </div>
+    </section>
+
+    <!-- Histogram + Stats -->
+    <div class="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- Histogram -->
+      <div class="lg:col-span-2 glass-card p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold text-slate-700 dark:text-slate-200">&#128202; Live Latency Distribution</h2>
+          <div class="flex items-center gap-4 text-xs">
+            <span class="flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded-sm inline-block" style="background:rgba(34,197,94,0.75)"></span>
+              <span class="text-slate-500 dark:text-slate-400">Cache hit</span>
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class="w-3 h-3 rounded-sm inline-block" style="background:rgba(99,102,241,0.75)"></span>
+              <span class="text-slate-500 dark:text-slate-400">DB hit</span>
+            </span>
+          </div>
+        </div>
+        <div id="hist-waiting" class="waiting-state rounded-xl flex items-center justify-center text-sm" style="height:300px">
+          Hit &#128640; <strong class="mx-1">Fire Requests</strong> to watch the bimodal distribution form live
+        </div>
+        <canvas id="hist-chart" class="hidden"></canvas>
+        <div id="percentile-row" class="hidden mt-3 flex flex-wrap gap-4 text-xs text-slate-500 dark:text-slate-400">
+          <span>Mean: <strong id="mark-mean" class="text-slate-600 dark:text-slate-300">—</strong></span>
+          <span>P50: <strong id="mark-p50" class="text-slate-600 dark:text-slate-300">—</strong></span>
+          <span>P95: <strong id="mark-p95" class="text-amber-600 dark:text-amber-400">—</strong></span>
+          <span>P99: <strong id="mark-p99" class="text-red-500">—</strong></span>
+        </div>
+      </div>
+
+      <!-- Stats panel -->
+      <div class="glass-card p-6 flex flex-col gap-4">
+        <h2 class="text-lg font-semibold text-slate-700 dark:text-slate-200">&#128200; Stats</h2>
+
+        <div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Requests Fired</div>
+          <div id="stat-n" class="text-4xl font-bold text-indigo-600 dark:text-indigo-400">0</div>
+        </div>
+
+        <div class="h-px bg-slate-200 dark:bg-slate-700"></div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="stat-box border-green-500/25 bg-green-500/8">
+            <div class="text-xs text-green-600 dark:text-green-400 uppercase tracking-wide">Cache Hits</div>
+            <div id="stat-cache" class="text-xl font-bold text-green-600 dark:text-green-400 mt-0.5">—</div>
+          </div>
+          <div class="stat-box border-indigo-500/25 bg-indigo-500/8">
+            <div class="text-xs text-indigo-600 dark:text-indigo-400 uppercase tracking-wide">DB Hits</div>
+            <div id="stat-db" class="text-xl font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">—</div>
+          </div>
+        </div>
+
+        <div class="h-px bg-slate-200 dark:bg-slate-700"></div>
+
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Mean</span>
+            <span id="stat-mean" class="font-mono text-slate-700 dark:text-slate-200">—</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">P50 (median)</span>
+            <span id="stat-p50" class="font-mono text-slate-700 dark:text-slate-200">—</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">P95</span>
+            <span id="stat-p95" class="font-mono text-amber-600 dark:text-amber-400">—</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">P99</span>
+            <span id="stat-p99" class="font-mono text-red-500">—</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Cache speedup</span>
+            <span id="stat-speedup" class="font-mono text-green-600 dark:text-green-400">—</span>
+          </div>
+        </div>
+
+        <!-- Mean deception warning -->
+        <div id="mean-deception" class="hidden rounded-lg p-3 bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-400">
+          <strong>&#9888; Mean hides the bimodal!</strong><br/>
+          Mean = <span id="deception-mean">—</span> &mdash; nobody actually experiences this latency.<br/>
+          Real peaks: <span id="deception-peaks">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dynamic Analysis -->
+    <section id="analysis-section" class="hidden mt-6 glass-card p-6">
+      <h2 class="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-3">&#128161; Analysis</h2>
+      <div id="analysis-text" class="space-y-2 text-sm text-slate-600 dark:text-slate-400"></div>
+    </section>
+
+    <!-- Run History -->
+    <section class="mt-6 glass-card p-6">
+      <h2 class="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-4">&#128203; Run History</h2>
+      <div id="history-empty" class="text-sm text-slate-500 dark:text-slate-400 italic">No runs yet. Fire some requests to see results here.</div>
+      <div id="history-table-wrap" class="hidden overflow-x-auto">
+        <table class="w-full text-xs data-table">
+          <thead>
+            <tr>
+              <th class="px-3 py-2 text-left rounded-tl-lg">Run</th>
+              <th class="px-3 py-2 text-left">Mode</th>
+              <th class="px-3 py-2 text-right">Count</th>
+              <th class="px-3 py-2 text-right">Cache %</th>
+              <th class="px-3 py-2 text-right">Mean</th>
+              <th class="px-3 py-2 text-right">P50</th>
+              <th class="px-3 py-2 text-right">P99</th>
+              <th class="px-3 py-2 text-right rounded-tr-lg">Shape</th>
+            </tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Why Bimodal Matters -->
+    <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="glass-card p-6">
+        <h3 class="font-semibold text-slate-700 dark:text-slate-200 mb-3">&#129300; Why Your Average Lies</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">
+          If cache hits take ~150ms and DB hits take ~450ms at an 80/20 split:
+        </p>
+        <div class="font-mono text-sm space-y-1.5 p-3 rounded-lg bg-slate-100/80 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300">
+          <div>Mean = 0.8 &times; 150ms + 0.2 &times; 450ms</div>
+          <div class="text-indigo-600 dark:text-indigo-400 font-bold">     = 210ms &#8592; nobody actually sees this</div>
+        </div>
+        <p class="text-sm text-slate-600 dark:text-slate-400 mt-3">
+          80% of users get ~150ms, 20% get ~450ms.
+          The mean is a phantom &mdash; it exists in the gap between the two real experiences.
+        </p>
+      </div>
+      <div class="glass-card p-6">
+        <h3 class="font-semibold text-slate-700 dark:text-slate-200 mb-3">&#128302; What to Monitor Instead</h3>
+        <ul class="space-y-2.5 text-sm text-slate-600 dark:text-slate-400">
+          <li class="flex gap-2"><span class="text-green-500 shrink-0 font-bold">&#10003;</span><span><strong>P50</strong> &mdash; what a typical user experiences</span></li>
+          <li class="flex gap-2"><span class="text-amber-500 shrink-0 font-bold">&#10003;</span><span><strong>P95 / P99</strong> &mdash; what your worst-served users experience</span></li>
+          <li class="flex gap-2"><span class="text-blue-500 shrink-0 font-bold">&#10003;</span><span><strong>Cache hit rate</strong> &mdash; leading indicator; drops before latency spikes</span></li>
+          <li class="flex gap-2"><span class="text-purple-500 shrink-0 font-bold">&#10003;</span><span><strong>Histogram shape</strong> &mdash; bimodal = hidden slow tail; unimodal = healthy</span></li>
+          <li class="flex gap-2"><span class="text-red-500 shrink-0 font-bold">&#10005;</span><span><strong>Mean</strong> &mdash; collapses the distribution into a single misleading number</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Further Reading -->
+    <section class="mt-6 glass-card p-6">
+      <h2 class="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-4">&#128218; Further Reading</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <a href="https://medium.com/@michal.bojko.gdansk/why-p99-latency-is-the-only-number-your-users-feel-c7cf50c3befd"
+           target="_blank" class="flex gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition-colors group">
+          <span class="text-xl shrink-0">&#128216;</span>
+          <div>
+            <div class="text-sm font-medium text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Why P99 Latency Is the Only Number Your Users Feel</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">medium.com &middot; Micha&#322; Bojko</div>
+          </div>
+        </a>
+        <a href="https://medium.com/observability-is-engineering/variance-in-bins-a-beginners-guide-for-software-engineers-8f891cc31b3b"
+           target="_blank" class="flex gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition-colors group">
+          <span class="text-xl shrink-0">&#128215;</span>
+          <div>
+            <div class="text-sm font-medium text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Variance in Bins &mdash; A Beginner's Guide for Software Engineers</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">medium.com &middot; Observability is Engineering</div>
+          </div>
+        </a>
+        <a href="https://medium.com/observability-is-engineering/clustering-algorithms-in-observability-0c2d31e4dbca"
+           target="_blank" class="flex gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-indigo-400 transition-colors group">
+          <span class="text-xl shrink-0">&#128214;</span>
+          <div>
+            <div class="text-sm font-medium text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Clustering Algorithms in Observability</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">medium.com &middot; Observability is Engineering</div>
+          </div>
+        </a>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+  var WORKER = 'https://bimodal-demo.michal-bojko-gdansk.workers.dev';
+  var WARM_IDS = Array.from({length: 50}, function(_, i) { return i + 1; });
+  var COLD_START = 5001;
+  var coldId = COLD_START;
+
+  var BUCKET_MS = 25;
+  var MAX_MS = 1000;
+  var NUM_BUCKETS = Math.ceil(MAX_MS / BUCKET_MS) + 1;
+
+  var mode = 'mixed';
+  var count = 100;
+  var concurrency = 5;
+  var isRunning = false;
+  var runCount = 0;
+
+  var cacheHits = new Array(NUM_BUCKETS).fill(0);
+  var dbHits    = new Array(NUM_BUCKETS).fill(0);
+  var allLat = [], allSrc = [];
+
+  var histChart = null;
+
+  var MODE_DESCS = {
+    mixed: '80% cached IDs + 20% fresh DB hits \u2014 reveals the bimodal distribution',
+    warm:  'All requests use pre-warmed IDs \u2014 unimodal fast distribution',
+    cold:  'All requests use unique fresh IDs (cache misses) \u2014 unimodal slow distribution'
+  };
+
+  function activateBtn(group, btn) {
+    document.querySelectorAll('.' + group).forEach(function(b) {
+      b.classList.remove('border-indigo-500','bg-indigo-500/10','text-indigo-700','dark:text-indigo-300');
+      b.classList.add('border-slate-300','dark:border-slate-600','text-slate-600','dark:text-slate-400');
+    });
+    btn.classList.add('border-indigo-500','bg-indigo-500/10');
+    btn.classList.remove('border-slate-300','dark:border-slate-600','text-slate-600','dark:text-slate-400');
+  }
+
+  function setMode(m, btn) { mode = m; activateBtn('mode-btn', btn); document.getElementById('mode-desc').textContent = MODE_DESCS[m]; }
+  function setCount(n, btn) { count = n; activateBtn('count-btn', btn); }
+  function setConc(n, btn)  { concurrency = n; activateBtn('conc-btn', btn); }
+
+  function nextId(i) {
+    if (mode === 'cold') {
+      var id = coldId++;
+      if (coldId > 9999) coldId = COLD_START;
+      return id;
+    }
+    if (mode === 'warm') return WARM_IDS[i % WARM_IDS.length];
+    return Math.random() < 0.8
+      ? WARM_IDS[Math.floor(Math.random() * WARM_IDS.length)]
+      : (function() { var id = coldId++; if (coldId > 9999) coldId = COLD_START; return id; })();
+  }
+
+  function bucket(ms) { return ms >= MAX_MS ? NUM_BUCKETS - 1 : Math.floor(ms / BUCKET_MS); }
+  function bucketLabel(i) { return i >= NUM_BUCKETS - 1 ? MAX_MS + 'ms+' : (i * BUCKET_MS) + '\u2013' + ((i+1)*BUCKET_MS) + 'ms'; }
+
+  function initChart() {
+    var ctx = document.getElementById('hist-chart').getContext('2d');
+    var dark = document.documentElement.classList.contains('dark');
+    var gridCol = dark ? 'rgba(148,163,184,0.1)' : 'rgba(0,0,0,0.06)';
+    var tickCol = dark ? '#94a3b8' : '#64748b';
+    var labels = Array.from({length: NUM_BUCKETS}, function(_, i) { return bucketLabel(i); });
+    histChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Cache hit', data: new Array(NUM_BUCKETS).fill(0), backgroundColor: 'rgba(34,197,94,0.75)', borderColor: 'rgba(34,197,94,0.9)', borderWidth: 1, stack: 'l' },
+          { label: 'DB hit',    data: new Array(NUM_BUCKETS).fill(0), backgroundColor: 'rgba(99,102,241,0.75)', borderColor: 'rgba(99,102,241,0.9)', borderWidth: 1, stack: 'l' }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 100 },
+        plugins: { legend: { display: false }, tooltip: { callbacks: {
+          title: function(items) { return items[0].label; },
+          label: function(item) { return item.dataset.label + ': ' + item.raw + ' req'; }
+        }}},
+        scales: {
+          x: { stacked: true, ticks: { color: tickCol, font: {size:9}, maxRotation: 45,
+            callback: function(v, i) { return i % 4 === 0 ? this.getLabelForValue(v) : ''; }
+          }, grid: { color: gridCol } },
+          y: { stacked: true, ticks: { color: tickCol, font: {size:11} }, grid: { color: gridCol },
+            title: { display: true, text: 'Requests', color: tickCol, font: {size:11} } }
+        }
+      }
+    });
+  }
+
+  function updateChart() {
+    if (!histChart) return;
+    histChart.data.datasets[0].data = cacheHits.slice();
+    histChart.data.datasets[1].data = dbHits.slice();
+    histChart.update('none');
+  }
+
+  function pct(sorted, p) {
+    return sorted[Math.min(Math.floor(sorted.length * p), sorted.length - 1)];
+  }
+
+  function computeStats() {
+    if (!allLat.length) return null;
+    var s = allLat.slice().sort(function(a,b){return a-b;});
+    var n = s.length;
+    var mean = s.reduce(function(a,b){return a+b;},0) / n;
+    var cacheN = allSrc.filter(function(x){return x==='cache';}).length;
+    var cacheLat = allLat.filter(function(_,i){return allSrc[i]==='cache';});
+    var dbLat    = allLat.filter(function(_,i){return allSrc[i]==='database';});
+    var cacheMean = cacheLat.length ? cacheLat.reduce(function(a,b){return a+b;},0)/cacheLat.length : null;
+    var dbMean    = dbLat.length    ? dbLat.reduce(function(a,b){return a+b;},0)/dbLat.length       : null;
+    return {
+      n: n, mean: mean,
+      p50: pct(s,0.5), p95: pct(s,0.95), p99: pct(s,0.99),
+      cacheN: cacheN, dbN: n - cacheN,
+      cacheRate: (cacheN/n*100).toFixed(1),
+      cacheMean: cacheMean, dbMean: dbMean
+    };
+  }
+
+  function updateStats() {
+    var s = computeStats(); if (!s) return;
+    document.getElementById('stat-n').textContent = s.n;
+    document.getElementById('stat-cache').textContent = s.cacheN + ' (' + s.cacheRate + '%)';
+    document.getElementById('stat-db').textContent = s.dbN;
+    document.getElementById('stat-mean').textContent = Math.round(s.mean) + 'ms';
+    document.getElementById('stat-p50').textContent = Math.round(s.p50) + 'ms';
+    document.getElementById('stat-p95').textContent = Math.round(s.p95) + 'ms';
+    document.getElementById('stat-p99').textContent = Math.round(s.p99) + 'ms';
+    document.getElementById('mark-mean').textContent = Math.round(s.mean) + 'ms';
+    document.getElementById('mark-p50').textContent = Math.round(s.p50) + 'ms';
+    document.getElementById('mark-p95').textContent = Math.round(s.p95) + 'ms';
+    document.getElementById('mark-p99').textContent = Math.round(s.p99) + 'ms';
+    document.getElementById('percentile-row').classList.remove('hidden');
+    if (s.cacheMean && s.dbMean && s.dbMean > 0) {
+      document.getElementById('stat-speedup').textContent = (s.dbMean / s.cacheMean).toFixed(1) + 'x (' + Math.round(s.dbMean) + 'ms vs ' + Math.round(s.cacheMean) + 'ms)';
+    }
+  }
+
+  function showAnalysis() {
+    var s = computeStats(); if (!s || s.n < 20) return;
+    var section = document.getElementById('analysis-section');
+    var el = document.getElementById('analysis-text');
+    section.classList.remove('hidden');
+    var lines = [];
+
+    if (s.cacheN > 0 && s.dbN > 0) {
+      var speedup = s.cacheMean && s.dbMean ? (s.dbMean / s.cacheMean).toFixed(1) : '?';
+      lines.push('<p><strong>\uD83D\uDCCA Bimodal distribution confirmed</strong> \u2014 two distinct latency populations: cache hits at ~' + Math.round(s.cacheMean) + 'ms and DB hits at ~' + Math.round(s.dbMean) + 'ms.</p>');
+      lines.push('<p><strong>\uD83E\uDDE0 Mean (' + Math.round(s.mean) + 'ms) is a ghost</strong> \u2014 it falls between both peaks. ' + s.cacheRate + '% of users experience ~' + Math.round(s.cacheMean) + 'ms, ' + (100 - parseFloat(s.cacheRate)).toFixed(1) + '% experience ~' + Math.round(s.dbMean) + 'ms. Nobody gets ' + Math.round(s.mean) + 'ms.</p>');
+      lines.push('<p><strong>\u26A1 ' + speedup + 'x cache speedup</strong> \u2014 Redis is saving ' + Math.round((s.dbMean || 0) - (s.cacheMean || 0)) + 'ms per cached request. At ' + s.cacheRate + '% hit rate, your average user never waits for PostgreSQL.</p>');
+    } else if (parseFloat(s.cacheRate) > 90) {
+      lines.push('<p><strong>\u2705 Warm cache \u2014 unimodal fast</strong> \u2014 ' + s.cacheRate + '% of requests served from Redis (~' + Math.round(s.p50) + 'ms p50). PostgreSQL is not in the critical path.</p>');
+      lines.push('<p><strong>\uD83D\uDCB0 Business impact</strong> \u2014 this is peak cache efficiency. A drop in cache hit rate would immediately reveal the bimodal shape as DB hits bleed in.</p>');
+    } else {
+      lines.push('<p><strong>\uD83D\uDC22 Cold cache \u2014 unimodal slow</strong> \u2014 all requests hitting PostgreSQL via Hyperdrive (~' + Math.round(s.p50) + 'ms p50). Adding Redis caching would reduce latency ' + (s.dbMean ? Math.round(s.dbMean / 150) : 3) + 'x for repeated lookups.</p>');
+    }
+
+    if (s.p99 > s.mean * 2) {
+      lines.push('<p><strong>\u26A0\uFE0F SLO risk</strong> \u2014 P99 (' + Math.round(s.p99) + 'ms) is ' + (s.p99 / s.mean).toFixed(1) + 'x the mean. An SLO set on mean latency would report green while 1% of users wait ' + Math.round(s.p99) + 'ms.</p>');
+    }
+
+    el.innerHTML = lines.join('');
+
+    if (s.cacheN > 0 && s.dbN > 0) {
+      document.getElementById('mean-deception').classList.remove('hidden');
+      document.getElementById('deception-mean').textContent = Math.round(s.mean) + 'ms';
+      document.getElementById('deception-peaks').textContent = '~' + Math.round(s.cacheMean) + 'ms (cache) and ~' + Math.round(s.dbMean) + 'ms (DB)';
+    }
+  }
+
+  function addHistory(s, modeUsed) {
+    document.getElementById('history-empty').classList.add('hidden');
+    document.getElementById('history-table-wrap').classList.remove('hidden');
+    var bimodal = s.cacheN > s.n * 0.05 && s.dbN > s.n * 0.05;
+    var shape = bimodal ? '<span class="text-indigo-500 font-semibold">Bimodal</span>' : (parseFloat(s.cacheRate) > 80 ? '<span class="text-green-500 font-semibold">Unimodal Fast</span>' : '<span class="text-slate-400 font-semibold">Unimodal Slow</span>');
+    var modeLabel = {mixed:'Mixed', warm:'Warm', cold:'Cold'}[modeUsed] || modeUsed;
+    var row = '<tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/30">' +
+      '<td class="px-3 py-2 font-mono text-slate-500">#' + runCount + '</td>' +
+      '<td class="px-3 py-2 font-medium">' + modeLabel + '</td>' +
+      '<td class="px-3 py-2 text-right">' + s.n + '</td>' +
+      '<td class="px-3 py-2 text-right">' + s.cacheRate + '%</td>' +
+      '<td class="px-3 py-2 text-right font-mono">' + Math.round(s.mean) + 'ms</td>' +
+      '<td class="px-3 py-2 text-right font-mono">' + Math.round(s.p50) + 'ms</td>' +
+      '<td class="px-3 py-2 text-right font-mono text-red-500">' + Math.round(s.p99) + 'ms</td>' +
+      '<td class="px-3 py-2 text-right">' + shape + '</td>' +
+      '</tr>';
+    var tbody = document.getElementById('history-body');
+    tbody.insertAdjacentHTML('afterbegin', row);
+  }
+
+  async function warmup() {
+    document.getElementById('progress-text').textContent = 'Warming cache\u2026';
+    var chunks = [];
+    for (var i = 0; i < WARM_IDS.length; i += 10) chunks.push(WARM_IDS.slice(i, i + 10));
+    for (var c = 0; c < chunks.length; c++) {
+      await Promise.all(chunks[c].map(function(id) {
+        return fetch(WORKER + '/product?id=' + id).catch(function(){});
+      }));
+    }
+  }
+
+  async function runBenchmark() {
+    if (isRunning) return;
+    isRunning = true;
+    runCount++;
+    var modeUsed = mode;
+
+    var fireBtn = document.getElementById('fire-btn');
+    fireBtn.disabled = true;
+    fireBtn.textContent = '\u23F3 Running\u2026';
+    fireBtn.classList.add('opacity-60','cursor-not-allowed');
+
+    document.getElementById('hist-waiting').classList.add('hidden');
+    var canvas = document.getElementById('hist-chart');
+    canvas.classList.remove('hidden');
+    document.getElementById('progress-bar-wrap').classList.remove('hidden');
+    if (!histChart) initChart();
+
+    if (mode === 'warm') await warmup();
+
+    var total = count, completed = 0;
+    var queue = Array.from({length: total}, function(_, i) { return i; });
+    var active = 0;
+
+    function scheduleNext() {
+      while (active < concurrency && queue.length > 0) {
+        var idx = queue.shift();
+        active++;
+        var id = nextId(idx);
+        var t0 = performance.now();
+        fetch(WORKER + '/product?id=' + id)
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            var lat = performance.now() - t0;
+            var src = data.source || 'database';
+            allLat.push(lat); allSrc.push(src);
+            if (src === 'cache') cacheHits[bucket(lat)]++;
+            else dbHits[bucket(lat)]++;
+            completed++; active--;
+            var pct = Math.round(completed / total * 100);
+            document.getElementById('progress-bar').style.width = pct + '%';
+            document.getElementById('progress-text').textContent = completed + ' / ' + total;
+            if (completed % 5 === 0 || completed === total) { updateChart(); updateStats(); }
+            if (completed === total) finish();
+            else scheduleNext();
+          })
+          .catch(function() {
+            completed++; active--;
+            if (completed === total) finish();
+            else scheduleNext();
+          });
+      }
+    }
+
+    scheduleNext();
+
+    function finish() {
+      isRunning = false;
+      fireBtn.disabled = false;
+      fireBtn.textContent = '\uD83D\uDE80 Fire Requests';
+      fireBtn.classList.remove('opacity-60','cursor-not-allowed');
+      document.getElementById('progress-text').textContent = '\u2705 Done';
+      document.getElementById('progress-bar').style.width = '100%';
+      updateChart(); updateStats(); showAnalysis();
+      var s = computeStats();
+      if (s) addHistory(s, modeUsed);
+      setTimeout(function() {
+        document.getElementById('progress-text').textContent = '';
+        document.getElementById('progress-bar-wrap').classList.add('hidden');
+        document.getElementById('progress-bar').style.width = '0%';
+      }, 2500);
+    }
+  }
+
+  function resetResults() {
+    cacheHits = new Array(NUM_BUCKETS).fill(0);
+    dbHits    = new Array(NUM_BUCKETS).fill(0);
+    allLat = []; allSrc = [];
+    coldId = COLD_START;
+    if (histChart) { histChart.data.datasets[0].data = new Array(NUM_BUCKETS).fill(0); histChart.data.datasets[1].data = new Array(NUM_BUCKETS).fill(0); histChart.update(); }
+    ['stat-n','stat-cache','stat-db','stat-mean','stat-p50','stat-p95','stat-p99','stat-speedup',
+     'mark-mean','mark-p50','mark-p95','mark-p99'].forEach(function(id) {
+      document.getElementById(id).textContent = id === 'stat-n' ? '0' : '\u2014';
+    });
+    document.getElementById('percentile-row').classList.add('hidden');
+    document.getElementById('mean-deception').classList.add('hidden');
+    document.getElementById('analysis-section').classList.add('hidden');
+    document.getElementById('progress-text').textContent = '';
+    document.getElementById('hist-waiting').classList.remove('hidden');
+    if (histChart) { document.getElementById('hist-chart').classList.add('hidden'); }
+  }
+  </script>
+
+  <script src="shared/nav.js"></script>
+</body>
+</html>
