@@ -115,6 +115,27 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
         <div class="flex justify-between"><span class="text-slate-400">Sturges' rule:</span><span id="s1-sturges" class="text-emerald-400 font-semibold">—</span></div>
         <div class="flex justify-between"><span class="text-slate-400">Freedman-Diaconis:</span><span id="s1-fd" class="text-amber-400 font-semibold">—</span></div>
         <div class="flex justify-between"><span class="text-slate-400">Your selection:</span><span id="s1-yours" class="text-indigo-300 font-semibold">20</span></div>
+        <button onclick="var p=document.getElementById('s1-rules-explain');p.style.display=p.style.display==='none'?'block':'none';"
+          class="text-indigo-400 hover:text-indigo-300 transition-colors text-left" style="font-size:0.68rem;margin-top:2px;">
+          ⓘ What are these rules?
+        </button>
+      </div>
+      <div id="s1-rules-explain" style="display:none;" class="glass-card mt-3 p-4 text-xs text-slate-300 space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <div class="text-emerald-400 font-bold mb-1">📐 Sturges' Rule</div>
+            <div class="text-slate-300 leading-relaxed"><strong>Formula:</strong> k = ⌈log₂(n) + 1⌉</div>
+            <div class="text-slate-400 mt-1 leading-relaxed">Only needs your sample size <em>n</em>. Fast and simple. Works well for small, symmetric (bell-shaped) datasets. Tends to <strong>under-bin</strong> large datasets and misses fine detail in bimodal or skewed distributions.</div>
+            <div class="text-emerald-300 mt-1 font-mono text-xs">e.g. n=500 → ⌈9.0 + 1⌉ = 10 bins</div>
+          </div>
+          <div>
+            <div class="text-amber-400 font-bold mb-1">📏 Freedman-Diaconis Rule</div>
+            <div class="text-slate-300 leading-relaxed"><strong>Formula:</strong> h = 2 × IQR × n<sup>−1/3</sup>, bins = range / h</div>
+            <div class="text-slate-400 mt-1 leading-relaxed">Uses the <strong>interquartile range (IQR)</strong> — the gap between the 25th and 75th percentile — to set bin width. Robust to outliers. But on <strong>heavy-tailed data</strong> (small IQR, large range) it can suggest thousands of bins — more than any chart can render. That's the signal: your data has extreme spread.</div>
+            <div class="text-amber-300 mt-1">⚠ "Beyond slider" means FD detected a very wide range relative to your IQR. Try the Payments preset to see this in action.</div>
+          </div>
+        </div>
+        <div class="text-slate-500 border-t border-white/10 pt-2 mt-2">Neither rule is universally correct. They are <em>starting points</em> — your job is to choose the bin count that best reveals the shape you care about for your audience.</div>
       </div>
     </div>
 
@@ -632,7 +653,28 @@ function s1UpdateRules(){
   var fdBinW=2*iqr*Math.pow(n,-1/3);
   var fd=fdBinW>0?Math.ceil(range/fdBinW):sturges;
   document.getElementById('s1-sturges').textContent=sturges+' bins';
-  document.getElementById('s1-fd').textContent=fd+' bins';
+  var fdLabel = fd + ' bins';
+  var fdEl = document.getElementById('s1-fd');
+  if(fd > 80){
+    fdLabel = fd + ' bins';
+    fdEl.textContent = fdLabel;
+    fdEl.title = 'Freedman-Diaconis wants thin bins because your IQR is small relative to the data range. This is a valid signal of heavy-tailed data — not a formula error.';
+    fdEl.style.position='relative';
+    // Add badge if not already there
+    var badge = document.getElementById('s1-fd-badge');
+    if(!badge){
+      badge = document.createElement('span');
+      badge.id='s1-fd-badge';
+      badge.textContent=' ⚠ beyond slider';
+      badge.style.cssText='color:#f59e0b;font-size:0.65rem;font-weight:600;margin-left:4px;';
+      fdEl.parentElement.appendChild(badge);
+    } else { badge.style.display='inline'; }
+  } else {
+    fdEl.textContent = fdLabel;
+    fdEl.title = '';
+    var badge = document.getElementById('s1-fd-badge');
+    if(badge) badge.style.display='none';
+  }
   window._s1Sturges=sturges; window._s1FD=fd;
   s1UpdateInsight();
 }
