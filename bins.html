@@ -65,19 +65,17 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
 .run-btn-done { background:rgba(16,185,129,0.2); color:#34d399; cursor:default; }
 </style>
 </head>
-<body>
+<body class="min-h-screen">
+<div id="site-nav"></div>
 
-<!-- NAV -->
-<script src="shared/nav.js"></script>
-<div id="nav-root"></div>
-
-<main class="max-w-5xl mx-auto px-4 pt-20 pb-16">
+<main class="max-w-7xl mx-auto px-4 pt-20 pb-16">
 
   <!-- Header -->
   <div class="mb-8">
     <div class="flex items-center gap-3 mb-2">
       <span class="text-3xl">📊</span>
       <h1 class="text-2xl font-bold">Bins &amp; Histograms</h1>
+      <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">● Live</span>
     </div>
     <p class="text-slate-400 text-sm max-w-2xl">Your p99 is probably lying to you. Your average is definitely lying to you. Histograms reveal the shape of your data — and the shape is where the truth lives.</p>
   </div>
@@ -321,10 +319,10 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
 /* ══════════════════════════════════════════════════════════
    THEME
 ══════════════════════════════════════════════════════════ */
-function getPreferredTheme(){return localStorage.getItem('bins-theme')||'dark';}
+function getPreferredTheme(){return localStorage.getItem('de-theme')||'dark';}
 function applyTheme(t){
   document.documentElement.classList.toggle('dark',t==='dark');
-  localStorage.setItem('bins-theme',t);
+  localStorage.setItem('de-theme',t);
   s1Draw(); s2Draw(); s3Draw();
 }
 applyTheme(getPreferredTheme());
@@ -1003,5 +1001,6 @@ window.addEventListener('resize',function(){
   s1Draw(); s2Draw(); s3Draw();
 });
 </script>
+<script src="shared/nav.js"></script>
 </body>
 </html>
