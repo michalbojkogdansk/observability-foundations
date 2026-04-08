@@ -854,7 +854,7 @@ function s3SloChange(){
 
 function s3SetBuckets(preset){
   s3BucketPreset=preset;
-  document.querySelectorAll('.card:nth-child(3) .mode-set .mode-opt').forEach(function(b){b.classList.remove('active');});
+  event.target.parentElement.querySelectorAll('.mode-opt').forEach(function(b){b.classList.remove('active');});
   event.target.classList.add('active');
   document.getElementById('s3-custom-editor').classList.toggle('hidden',preset!=='custom');
   s3Draw();
