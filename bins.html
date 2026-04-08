@@ -703,15 +703,15 @@ function s2Reset(){
 function s2UpdateStats(){
   if(s2Data.length<10) return;
   var m=mean(s2Data),med=median(s2Data),p95v=percentile(s2Data,95),p99v=percentile(s2Data,99);
-  var fmtColor=function(v,thresh,id){
+  var fmtColor=function(v,thresh,id,alertColor){
     var el=document.getElementById(id);
     el.textContent=Math.round(v)+'ms';
-    el.style.color=v>thresh?'#f87171':'#a5b4fc';
+    el.style.color=v>thresh?(alertColor||'#f87171'):'#a5b4fc';
   };
   fmtColor(m,300,'s2-mean-val');
   document.getElementById('s2-median-val').textContent=Math.round(med)+'ms';
-  fmtColor(p95v,400,'s2-p95-val');
-  fmtColor(p99v,600,'s2-p99-val');
+  fmtColor(p95v,400,'s2-p95-val','#f59e0b');  /* amber for p95 warning */
+  fmtColor(p99v,600,'s2-p99-val','#f87171');  /* red for p99 critical */
 
   // Alert detection
   var elapsed=s2StartTime?((Date.now()-s2StartTime)/1000).toFixed(0):0;
