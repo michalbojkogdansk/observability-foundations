@@ -31,9 +31,11 @@
 
   navEl.innerHTML =
     '<nav class="site-nav">' +
-      '<a class="nav-brand" href="index.html">⚙️ <span class="brand-text">DE Foundations</span></a>' +
+      '<div class="nav-top-row">' +
+        '<a class="nav-brand" href="index.html">⚙️ <span class="brand-text">DE Foundations</span></a>' +
+        '<button class="nav-toggle" id="nav-theme-toggle" title="Toggle dark/light mode">' + themeIcon + '</button>' +
+      '</div>' +
       '<div class="nav-links">' + linksHTML + '</div>' +
-      '<button class="nav-toggle" id="nav-theme-toggle" title="Toggle dark/light mode">' + themeIcon + '</button>' +
     '</nav>';
 
   // Theme toggle
@@ -43,12 +45,10 @@
       if (typeof window.toggleTheme === 'function') {
         window.toggleTheme();
       } else {
-        // Fallback
         var dark = document.documentElement.classList.contains('dark');
         document.documentElement.classList.toggle('dark', !dark);
         localStorage.setItem('de-theme', dark ? 'light' : 'dark');
       }
-      // Update icon
       var nowDark = document.documentElement.classList.contains('dark');
       toggleBtn.textContent = nowDark ? '🌙' : '☀️';
     });
