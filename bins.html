@@ -3,42 +3,1005 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Bins & Histograms — Data Engineering Foundations</title>
+<title>Bins & Histograms — Observability Foundations</title>
 <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script>tailwind.config = { darkMode: 'class' }</script>
 <link rel="stylesheet" href="shared/style.css" />
+<style>
+/* ── Canvas ── */
+.hist-canvas { width:100%; border-radius:0.75rem; display:block; }
+.dark .hist-canvas { background:rgba(6,8,20,0.9); border:1px solid rgba(99,102,241,0.12); }
+html:not(.dark) .hist-canvas { background:#f8fafc; border:1px solid #e2e8f0; }
+
+/* ── Sliders ── */
+.hist-slider { -webkit-appearance:none; width:100%; height:6px; border-radius:3px; outline:none; background:rgba(99,102,241,0.15); }
+.hist-slider::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; background:#6366f1; cursor:pointer; border:2px solid #a5b4fc; }
+
+/* ── Mode tabs ── */
+.mode-set { display:inline-flex; border-radius:8px; overflow:hidden; border:1px solid rgba(99,102,241,0.25); }
+.mode-opt { padding:0.35rem 1rem; font-size:0.78rem; font-weight:600; cursor:pointer; border:none; transition:all 0.15s; background:transparent; }
+.mode-opt.active  { background:rgba(99,102,241,0.25); color:#a5b4fc; }
+.mode-opt:not(.active) { color:#64748b; }
+.mode-opt:not(.active):hover { color:#94a3b8; }
+
+/* ── Stat box ── */
+.stat-box { border-radius:0.75rem; padding:1rem; text-align:center; }
+.dark .stat-box { background:rgba(15,20,40,0.6); border:1px solid rgba(99,102,241,0.12); }
+html:not(.dark) .stat-box { background:rgba(248,250,252,0.95); border:1px solid #e2e8f0; }
+
+/* ── Bench bar ── */
+.bench-bar-wrap { background:rgba(99,102,241,0.08); border-radius:4px; height:12px; overflow:hidden; }
+.bench-bar { height:100%; border-radius:4px; transition:width 0.8s cubic-bezier(0.4,0,0.2,1); }
+
+/* ── Bucket row ── */
+.bucket-row { display:flex; align-items:center; gap:0.5rem; padding:0.35rem 0.5rem; border-radius:6px; font-size:0.78rem; border:1px solid transparent; transition:all 0.15s; }
+.dark .bucket-row { background:rgba(15,20,40,0.4); }
+html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
+.bucket-row.highlight { border-color:rgba(99,102,241,0.4); background:rgba(99,102,241,0.08); }
+.bucket-fill { height:8px; border-radius:3px; transition:width 0.4s; }
+
+/* ── API probe buttons ── */
+.api-btn { padding:0.4rem 0.9rem; border-radius:8px; font-size:0.78rem; font-weight:600; cursor:pointer; border:1px solid rgba(99,102,241,0.3); transition:all 0.15s; background:transparent; color:#94a3b8; }
+.api-btn.active { border-color:#6366f1; background:rgba(99,102,241,0.15); color:#a5b4fc; }
+.api-btn:hover:not(.active) { border-color:rgba(99,102,241,0.4); color:#c7d2fe; }
+
+/* ── Progress bar ── */
+.probe-progress { height:4px; border-radius:2px; background:rgba(99,102,241,0.12); overflow:hidden; }
+.probe-progress-inner { height:100%; background:linear-gradient(90deg,#6366f1,#a5b4fc); border-radius:2px; transition:width 0.2s; }
+
+/* ── Annotation line on canvas ── */
+.canvas-wrap { position:relative; }
+
+/* ── Outlier badge ── */
+.outlier-badge { display:inline-flex; align-items:center; gap:0.3rem; font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:999px; }
+.outlier-badge.injected { background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3); }
+.outlier-badge.normal { background:rgba(99,102,241,0.12); color:#a5b4fc; border:1px solid rgba(99,102,241,0.2); }
+
+/* ── Run button ── */
+.run-btn { padding:0.55rem 1.4rem; border-radius:10px; font-weight:700; font-size:0.85rem; cursor:pointer; border:none; transition:all 0.2s; }
+.run-btn-idle { background:linear-gradient(135deg,#6366f1,#4f46e5); color:#fff; }
+.run-btn-busy { background:rgba(99,102,241,0.2); color:#6366f1; cursor:not-allowed; }
+.run-btn-done { background:rgba(16,185,129,0.2); color:#34d399; cursor:default; }
+</style>
 </head>
-<body class="min-h-screen">
-<div id="site-nav"></div>
+<body>
 
-<main class="max-w-7xl mx-auto px-4 py-8">
-  <div class="card p-8 text-center">
-    <div class="text-6xl mb-4">📊</div>
-    <h1 class="text-3xl font-bold mb-3">Bins &amp; Histograms</h1>
-    <p class="text-slate-400 max-w-2xl mx-auto mb-6">Understanding data distribution through binning strategies. Learn how bin width affects pattern visibility, when to use histograms vs density plots, and how to detect skewness in your data.</p>
-    <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 text-amber-400 text-sm font-medium">
-      🚧 Coming Soon
+<!-- NAV -->
+<script src="shared/nav.js"></script>
+<div id="nav-root"></div>
+
+<main class="max-w-5xl mx-auto px-4 pt-20 pb-16">
+
+  <!-- Header -->
+  <div class="mb-8">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="text-3xl">📊</span>
+      <h1 class="text-2xl font-bold">Bins &amp; Histograms</h1>
     </div>
+    <p class="text-slate-400 text-sm max-w-2xl">Your p99 is probably lying to you. Your average is definitely lying to you. Histograms reveal the shape of your data — and the shape is where the truth lives.</p>
   </div>
 
-  <div class="card p-6 mt-6">
-    <h2 class="text-xl font-bold mb-4">What you'll learn</h2>
-    <ul class="space-y-3 text-slate-300">
-      <li>✅ Choosing optimal bin width (Sturges, Scott, Freedman-Diaconis rules)</li>
-      <li>✅ Detecting distribution shapes (normal, skewed, bimodal)</li>
-      <li>✅ Using histograms for data quality checks</li>
-      <li>✅ Comparing distributions across segments</li>
-    </ul>
-  </div>
+  <!-- ═══════════════════════════════════════════════════
+       SCENARIO 1 — BIN WIDTH PROBLEM
+  ═══════════════════════════════════════════════════ -->
+  <section class="card p-6 mb-6">
+    <div class="flex items-start justify-between gap-4 mb-1">
+      <div>
+        <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Scenario 1</span>
+        <h2 class="text-base font-bold mt-0.5">The Bin Width Problem</h2>
+        <p class="text-xs text-slate-400 mt-1">How many bins is the right number? Too few hides the shape. Too many shows only noise. Drag the slider to see your data transform.</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 mb-4">
+      <div>
+        <div class="text-xs text-slate-400 mb-1 font-semibold">Dataset</div>
+        <div class="mode-set">
+          <button class="mode-opt active" onclick="s1SetPreset('api')">API Latency</button>
+          <button class="mode-opt" onclick="s1SetPreset('payment')">Payments</button>
+          <button class="mode-opt" onclick="s1SetPreset('db')">DB Queries</button>
+        </div>
+      </div>
+      <div>
+        <div class="text-xs text-slate-400 mb-1 font-semibold">Bin count: <span id="s1-bin-val" class="text-indigo-300">20</span></div>
+        <input type="range" min="2" max="80" value="20" class="hist-slider" id="s1-bins"
+               oninput="s1BinChange(this.value)" />
+        <div class="flex justify-between text-xs text-slate-500 mt-0.5"><span>2</span><span>80</span></div>
+      </div>
+      <div class="flex flex-col gap-1.5 text-xs">
+        <div class="flex justify-between"><span class="text-slate-400">Sturges' rule:</span><span id="s1-sturges" class="text-emerald-400 font-semibold">—</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Freedman-Diaconis:</span><span id="s1-fd" class="text-amber-400 font-semibold">—</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Your selection:</span><span id="s1-yours" class="text-indigo-300 font-semibold">20</span></div>
+      </div>
+    </div>
+
+    <canvas id="s1-canvas" class="hist-canvas" height="220"></canvas>
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+      <div class="stat-box"><div class="text-lg font-bold text-indigo-300" id="s1-mean">—</div><div class="text-xs text-slate-400 mt-0.5">Mean</div></div>
+      <div class="stat-box"><div class="text-lg font-bold text-emerald-400" id="s1-median">—</div><div class="text-xs text-slate-400 mt-0.5">Median</div></div>
+      <div class="stat-box"><div class="text-lg font-bold text-amber-400" id="s1-p99">—</div><div class="text-xs text-slate-400 mt-0.5">p99</div></div>
+      <div class="stat-box"><div class="text-lg font-bold text-rose-400" id="s1-shape">—</div><div class="text-xs text-slate-400 mt-0.5">Distribution</div></div>
+    </div>
+
+    <div id="s1-insight" class="mt-3 text-xs text-slate-300 rounded-lg p-3 border border-indigo-500/20 bg-indigo-500/5"></div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════
+       SCENARIO 2 — PERCENTILE vs AVERAGE SHOWDOWN
+  ═══════════════════════════════════════════════════ -->
+  <section class="card p-6 mb-6">
+    <div class="flex items-start justify-between gap-4 mb-1">
+      <div>
+        <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Scenario 2</span>
+        <h2 class="text-base font-bold mt-0.5">Percentile vs Average Showdown</h2>
+        <p class="text-xs text-slate-400 mt-1">Start a live request stream. Then inject slow outliers and watch how mean stays calm while p99 screams. See which metric your alert fires on first.</p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-3 mt-4 mb-4 items-end">
+      <div>
+        <div class="text-xs text-slate-400 mb-1 font-semibold">Traffic pattern</div>
+        <div class="mode-set">
+          <button class="mode-opt active" onclick="s2SetPattern('normal')">Normal</button>
+          <button class="mode-opt" onclick="s2SetPattern('skewed')">Right-skewed</button>
+          <button class="mode-opt" onclick="s2SetPattern('bimodal')">Bimodal</button>
+        </div>
+      </div>
+      <button id="s2-stream-btn" class="run-btn run-btn-idle" onclick="s2ToggleStream()">▶ Start Stream</button>
+      <button id="s2-inject-btn" class="run-btn" style="background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.3);" onclick="s2InjectOutliers()" disabled>💉 Inject Slow Outliers</button>
+      <button class="run-btn" style="background:rgba(100,116,139,0.15);color:#94a3b8;font-size:0.75rem;" onclick="s2Reset()">↺ Reset</button>
+    </div>
+
+    <canvas id="s2-canvas" class="hist-canvas" height="200"></canvas>
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+      <div class="stat-box">
+        <div class="text-lg font-bold" id="s2-mean-val">—</div>
+        <div class="text-xs text-slate-400 mt-0.5">Mean</div>
+        <div id="s2-mean-alert" class="text-xs mt-1 font-bold hidden text-amber-400">⚠ Alert threshold crossed</div>
+      </div>
+      <div class="stat-box">
+        <div class="text-lg font-bold text-emerald-400" id="s2-median-val">—</div>
+        <div class="text-xs text-slate-400 mt-0.5">Median</div>
+      </div>
+      <div class="stat-box">
+        <div class="text-lg font-bold" id="s2-p95-val">—</div>
+        <div class="text-xs text-slate-400 mt-0.5">p95</div>
+        <div id="s2-p95-alert" class="text-xs mt-1 font-bold hidden text-rose-400">🚨 SLO breach!</div>
+      </div>
+      <div class="stat-box">
+        <div class="text-lg font-bold" id="s2-p99-val">—</div>
+        <div class="text-xs text-slate-400 mt-0.5">p99</div>
+        <div id="s2-p99-alert" class="text-xs mt-1 font-bold hidden text-rose-400">🚨 SLO breach!</div>
+      </div>
+    </div>
+
+    <div id="s2-alert-story" class="mt-3 text-xs rounded-lg p-3 border hidden"></div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════
+       SCENARIO 3 — SLO BUCKET DESIGNER
+  ═══════════════════════════════════════════════════ -->
+  <section class="card p-6 mb-6">
+    <div class="flex items-start justify-between gap-4 mb-1">
+      <div>
+        <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Scenario 3</span>
+        <h2 class="text-base font-bold mt-0.5">SLO Bucket Designer</h2>
+        <p class="text-xs text-slate-400 mt-1">Prometheus histogram buckets placed in the wrong spots introduce massive interpolation error. Design your buckets for your actual latency profile — or probe a real public API right now.</p>
+      </div>
+    </div>
+
+    <!-- Data source -->
+    <div class="mt-4 mb-2">
+      <div class="text-xs text-slate-400 mb-2 font-semibold">Data Source</div>
+      <div class="flex flex-wrap gap-2 mb-3">
+        <button class="api-btn active" id="src-btn-preset" onclick="s3SetSource('preset')">📦 Preset Profile</button>
+        <button class="api-btn" id="src-btn-github" onclick="s3SetSource('github')">🐙 GitHub API</button>
+        <button class="api-btn" id="src-btn-openmeteo" onclick="s3SetSource('openmeteo')">🌤 Open-Meteo</button>
+        <button class="api-btn" id="src-btn-wikipedia" onclick="s3SetSource('wikipedia')">📖 Wikipedia</button>
+        <button class="api-btn" id="src-btn-hackernews" onclick="s3SetSource('hackernews')">🔶 Hacker News</button>
+      </div>
+
+      <!-- Preset selector (shown when source=preset) -->
+      <div id="s3-preset-row" class="flex flex-wrap gap-2">
+        <button class="api-btn active" id="profile-btn-api" onclick="s3SetProfile('api')">API Gateway</button>
+        <button class="api-btn" id="profile-btn-db" onclick="s3SetProfile('db')">Database</button>
+        <button class="api-btn" id="profile-btn-payment" onclick="s3SetProfile('payment')">Payment</button>
+        <button class="api-btn" id="profile-btn-cdn" onclick="s3SetProfile('cdn')">CDN / Edge</button>
+      </div>
+
+      <!-- Live probe row (shown when source=api) -->
+      <div id="s3-probe-row" class="hidden">
+        <div class="flex items-center gap-3 flex-wrap">
+          <button id="s3-probe-btn" class="run-btn run-btn-idle" onclick="s3RunProbe()">🔍 Probe Now (200 requests)</button>
+          <span id="s3-probe-status" class="text-xs text-slate-400"></span>
+        </div>
+        <div class="probe-progress mt-2" id="s3-probe-progress-wrap" style="display:none;">
+          <div class="probe-progress-inner" id="s3-probe-progress" style="width:0%"></div>
+        </div>
+        <div id="s3-probe-note" class="text-xs text-slate-500 mt-1"></div>
+      </div>
+    </div>
+
+    <!-- SLO target -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 mb-4">
+      <div>
+        <div class="text-xs text-slate-400 mb-1 font-semibold">SLO Target: p<span id="s3-slo-pct-label">95</span> &lt; <span id="s3-slo-ms-label">300</span>ms</div>
+        <div class="flex gap-3 items-center mb-2">
+          <span class="text-xs text-slate-500 w-8">%ile</span>
+          <input type="range" min="90" max="99" value="95" step="1" class="hist-slider flex-1" id="s3-slo-pct"
+                 oninput="s3SloChange()" />
+        </div>
+        <div class="flex gap-3 items-center">
+          <span class="text-xs text-slate-500 w-8">ms</span>
+          <input type="range" min="50" max="2000" value="300" step="50" class="hist-slider flex-1" id="s3-slo-ms"
+                 oninput="s3SloChange()" />
+        </div>
+      </div>
+      <div>
+        <div class="text-xs text-slate-400 mb-1 font-semibold">Bucket Preset</div>
+        <div class="mode-set flex-wrap">
+          <button class="mode-opt active" onclick="s3SetBuckets('default')">Default Prometheus</button>
+          <button class="mode-opt" onclick="s3SetBuckets('coarse')">Coarse</button>
+          <button class="mode-opt" onclick="s3SetBuckets('tuned')">Tuned</button>
+          <button class="mode-opt" onclick="s3SetBuckets('custom')">Custom</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom bucket editor -->
+    <div id="s3-custom-editor" class="hidden mb-4 text-xs">
+      <div class="text-slate-400 mb-1 font-semibold">Custom bucket boundaries (ms) — comma separated</div>
+      <input id="s3-custom-input" type="text" value="50,100,200,300,500,750,1000,2000"
+             class="w-full rounded-lg px-3 py-2 text-xs font-mono border border-indigo-500/30 bg-transparent text-slate-200"
+             oninput="s3CustomBucketChange()" />
+    </div>
+
+    <!-- Main visualisation -->
+    <canvas id="s3-canvas" class="hist-canvas" height="230"></canvas>
+
+    <!-- Bucket comparison table -->
+    <div class="mt-4">
+      <div class="text-xs font-semibold text-slate-300 mb-2">Bucket Analysis</div>
+      <div id="s3-bucket-list" class="flex flex-col gap-1.5"></div>
+    </div>
+
+    <!-- Error summary -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+      <div class="stat-box">
+        <div class="text-lg font-bold text-indigo-300" id="s3-true-pct">—</div>
+        <div class="text-xs text-slate-400 mt-0.5">True Percentile</div>
+      </div>
+      <div class="stat-box">
+        <div class="text-lg font-bold text-amber-400" id="s3-bucket-pct">—</div>
+        <div class="text-xs text-slate-400 mt-0.5">Bucket Estimate</div>
+      </div>
+      <div class="stat-box">
+        <div class="text-lg font-bold" id="s3-error-pct">—</div>
+        <div class="text-xs text-slate-400 mt-0.5">Interpolation Error</div>
+      </div>
+      <div class="stat-box">
+        <div class="text-lg font-bold" id="s3-slo-status">—</div>
+        <div class="text-xs text-slate-400 mt-0.5">SLO Verdict</div>
+      </div>
+    </div>
+
+    <div id="s3-insight" class="mt-3 text-xs text-slate-300 rounded-lg p-3 border border-indigo-500/20 bg-indigo-500/5 hidden"></div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════
+       FURTHER READING
+  ═══════════════════════════════════════════════════ -->
+  <section class="card p-6 mb-6">
+    <h2 class="text-base font-bold mb-4">📚 Further Reading</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <a href="https://medium.com/observability-is-engineering/how-can-i-find-customers-i-should-focus-on-elbow-to-the-rescue-7eaed4d46d2d" target="_blank" class="block p-4 rounded-xl border border-slate-700/40 hover:border-indigo-500/40 transition-colors no-underline">
+        <div class="text-xs text-indigo-400 font-semibold mb-1">Medium · Observability is Engineering</div>
+        <div class="text-sm font-semibold mb-1">Elbow to the Rescue: Finding the Right Number of Clusters</div>
+        <div class="text-xs text-slate-400">The elbow method is histogram thinking applied to clustering — finding the inflection point where more bins stop helping.</div>
+      </a>
+      <a href="https://medium.com/observability-is-engineering/clustering-algorithms-in-observability-0c2d31e4dbca" target="_blank" class="block p-4 rounded-xl border border-slate-700/40 hover:border-indigo-500/40 transition-colors no-underline">
+        <div class="text-xs text-indigo-400 font-semibold mb-1">Medium · Observability is Engineering</div>
+        <div class="text-sm font-semibold mb-1">Clustering Algorithms in Observability</div>
+        <div class="text-xs text-slate-400">How distribution shape — revealed by histograms — determines which clustering strategy works for your data.</div>
+      </a>
+      <a href="https://medium.com/observability-is-engineering/log-driven-development-benchmarks-pipelines-and-incident-timelines-13bb59604dbc" target="_blank" class="block p-4 rounded-xl border border-slate-700/40 hover:border-indigo-500/40 transition-colors no-underline">
+        <div class="text-xs text-indigo-400 font-semibold mb-1">Medium · Observability is Engineering</div>
+        <div class="text-sm font-semibold mb-1">Log-Driven Development: Benchmarks, Pipelines, and Incident Timelines</div>
+        <div class="text-xs text-slate-400">Latency histograms turn raw log streams into actionable SLO dashboards — how benchmarking and binning work together.</div>
+      </a>
+    </div>
+  </section>
+
 </main>
 
 <script>
-  function getPreferredTheme() { return localStorage.getItem('de-theme') || 'dark'; }
-  function applyTheme(theme) { document.documentElement.classList.toggle('dark', theme === 'dark'); localStorage.setItem('de-theme', theme); }
-  function toggleTheme() { applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark'); var btn = document.getElementById('nav-theme-toggle'); if (btn) btn.textContent = document.documentElement.classList.contains('dark') ? '🌙' : '☀️'; }
-  applyTheme(getPreferredTheme());
+/* ══════════════════════════════════════════════════════════
+   THEME
+══════════════════════════════════════════════════════════ */
+function getPreferredTheme(){return localStorage.getItem('bins-theme')||'dark';}
+function applyTheme(t){
+  document.documentElement.classList.toggle('dark',t==='dark');
+  localStorage.setItem('bins-theme',t);
+  s1Draw(); s2Draw(); s3Draw();
+}
+applyTheme(getPreferredTheme());
+document.addEventListener('themeChanged',function(e){ applyTheme(e.detail); });
+
+/* ══════════════════════════════════════════════════════════
+   UTILITIES
+══════════════════════════════════════════════════════════ */
+function isDark(){ return document.documentElement.classList.contains('dark'); }
+function clr(dark,light){ return isDark()?dark:light; }
+
+function percentile(arr,p){
+  var s=[].concat(arr).sort(function(a,b){return a-b;});
+  var idx=(p/100)*(s.length-1);
+  var lo=Math.floor(idx), hi=Math.ceil(idx);
+  return s[lo]+(s[hi]-s[lo])*(idx-lo);
+}
+function mean(arr){ return arr.reduce(function(a,b){return a+b;},0)/arr.length; }
+function median(arr){ return percentile(arr,50); }
+function stddev(arr){
+  var m=mean(arr);
+  return Math.sqrt(arr.reduce(function(s,v){return s+(v-m)*(v-m);},0)/arr.length);
+}
+
+/* Normal random (Box-Muller) */
+function randNorm(mu,sigma){
+  var u=0,v=0;
+  while(u===0) u=Math.random();
+  while(v===0) v=Math.random();
+  return mu+sigma*Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+
+/* Draw a histogram onto canvas */
+function drawHist(canvas, data, bins, options){
+  options = options||{};
+  var ctx = canvas.getContext('2d');
+  var W = canvas.clientWidth||canvas.width;
+  var H = canvas.clientHeight||canvas.height;
+  canvas.width = W; canvas.height = H;
+
+  var pad={top:20,right:20,bottom:30,left:48};
+  var plotW=W-pad.left-pad.right;
+  var plotH=H-pad.top-pad.bottom;
+
+  ctx.clearRect(0,0,W,H);
+
+  if(!data||data.length===0) return;
+
+  var minV=options.minV!==undefined?options.minV:Math.min.apply(null,data);
+  var maxV=options.maxV!==undefined?options.maxV:Math.max.apply(null,data);
+  if(minV===maxV){maxV=minV+1;}
+  var binW=(maxV-minV)/bins;
+
+  // Build counts
+  var counts=new Array(bins).fill(0);
+  for(var i=0;i<data.length;i++){
+    var b=Math.floor((data[i]-minV)/binW);
+    if(b>=bins) b=bins-1;
+    if(b<0) b=0;
+    counts[b]++;
+  }
+  var maxCount=Math.max.apply(null,counts);
+
+  // Grid lines
+  ctx.strokeStyle=clr('rgba(99,102,241,0.08)','rgba(100,116,139,0.12)');
+  ctx.lineWidth=1;
+  for(var g=0;g<=4;g++){
+    var gy=pad.top+plotH*(1-g/4);
+    ctx.beginPath(); ctx.moveTo(pad.left,gy); ctx.lineTo(pad.left+plotW,gy); ctx.stroke();
+  }
+
+  // Bars
+  var barGap=1;
+  for(var b2=0;b2<bins;b2++){
+    var bx=pad.left+b2*(plotW/bins)+barGap;
+    var bw=plotW/bins-barGap*2;
+    var bh=maxCount>0?(counts[b2]/maxCount)*plotH:0;
+    var by=pad.top+plotH-bh;
+
+    // Colour by outlier zone or normal
+    var binLo=minV+b2*binW;
+    var isOutlier=options.outlierThreshold&&binLo>=options.outlierThreshold;
+    if(isOutlier){
+      ctx.fillStyle='rgba(239,68,68,0.7)';
+    } else {
+      ctx.fillStyle=options.barColor||'rgba(99,102,241,0.65)';
+    }
+    ctx.beginPath();
+    ctx.roundRect(bx,by,Math.max(bw,1),bh,2);
+    ctx.fill();
+  }
+
+  // Annotation lines
+  if(options.lines){
+    options.lines.forEach(function(l){
+      var lx=pad.left+((l.value-minV)/(maxV-minV))*plotW;
+      ctx.strokeStyle=l.color||'#a5b4fc';
+      ctx.lineWidth=l.width||1.5;
+      ctx.setLineDash(l.dash||[]);
+      ctx.beginPath(); ctx.moveTo(lx,pad.top); ctx.lineTo(lx,pad.top+plotH); ctx.stroke();
+      ctx.setLineDash([]);
+      // label
+      if(l.label){
+        ctx.fillStyle=l.color||'#a5b4fc';
+        ctx.font='bold 10px Inter,sans-serif';
+        ctx.textAlign='center';
+        var ly=l.labelY||pad.top+12;
+        ctx.fillText(l.label,Math.min(Math.max(lx,pad.left+20),pad.left+plotW-20),ly);
+      }
+    });
+  }
+
+  // Bucket boundaries
+  if(options.buckets){
+    options.buckets.forEach(function(bv){
+      if(bv<minV||bv>maxV) return;
+      var lx=pad.left+((bv-minV)/(maxV-minV))*plotW;
+      ctx.strokeStyle='rgba(251,191,36,0.5)';
+      ctx.lineWidth=1;
+      ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(lx,pad.top); ctx.lineTo(lx,pad.top+plotH); ctx.stroke();
+      ctx.setLineDash([]);
+    });
+  }
+
+  // SLO line
+  if(options.sloLine!==undefined){
+    var slox=pad.left+((options.sloLine-minV)/(maxV-minV))*plotW;
+    ctx.strokeStyle='rgba(16,185,129,0.7)';
+    ctx.lineWidth=2;
+    ctx.setLineDash([5,3]);
+    ctx.beginPath(); ctx.moveTo(slox,pad.top); ctx.lineTo(slox,pad.top+plotH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(16,185,129,0.8)';
+    ctx.font='bold 10px Inter,sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('SLO',Math.min(Math.max(slox,pad.left+16),pad.left+plotW-16),pad.top+10);
+  }
+
+  // X axis labels
+  ctx.fillStyle=clr('#64748b','#94a3b8');
+  ctx.font='10px Inter,sans-serif';
+  ctx.textAlign='center';
+  var labelCount=6;
+  for(var lx2=0;lx2<=labelCount;lx2++){
+    var lval=minV+(maxV-minV)*(lx2/labelCount);
+    var lpx=pad.left+(lx2/labelCount)*plotW;
+    ctx.fillText(Math.round(lval)+'ms',lpx,H-8);
+  }
+
+  // Y axis labels
+  ctx.textAlign='right';
+  for(var g2=0;g2<=4;g2++){
+    var gy2=pad.top+plotH*(1-g2/4);
+    ctx.fillText(Math.round(maxCount*g2/4),pad.left-4,gy2+3);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   SCENARIO 1 — BIN WIDTH
+══════════════════════════════════════════════════════════ */
+var s1Data=[];
+var s1Bins=20;
+var s1Preset='api';
+
+var s1Presets={
+  api:{
+    gen:function(n){
+      var d=[];
+      for(var i=0;i<Math.round(n*0.75);i++) d.push(Math.max(5,randNorm(120,40)));
+      for(var i=0;i<Math.round(n*0.22);i++) d.push(Math.max(200,randNorm(450,80)));
+      for(var i=0;i<Math.round(n*0.03);i++) d.push(Math.max(800,randNorm(1200,200)));
+      return d;
+    },
+    shape:'Bimodal',
+    insight:function(bins,sturges,fd){
+      return '📊 API latency shows a bimodal distribution: ~75% of requests complete in ~120ms (cache hits), ~22% take ~450ms (cache misses). Your mean of ~{mean}ms sits right between the two peaks and represents <em>neither</em> user experience. With '+bins+' bins you '+(bins<sturges?'lose':'reveal')+' this split. Sturges suggests '+sturges+' bins (FD suggests '+fd+') — the right number makes both modes clearly visible.';
+    }
+  },
+  payment:{
+    gen:function(n){
+      var d=[];
+      for(var i=0;i<Math.round(n*0.6);i++) d.push(Math.max(10,randNorm(180,30)));
+      for(var i=0;i<Math.round(n*0.35);i++) d.push(Math.max(400,randNorm(650,100)));
+      for(var i=0;i<Math.round(n*0.05);i++) d.push(Math.max(2000,randNorm(3500,400)));
+      return d;
+    },
+    shape:'Heavy-tailed',
+    insight:function(bins,sturges,fd){
+      return '💳 Payment processing is right-skewed with a heavy tail. The bulk of transactions land ~180ms (card auth fast path), a secondary cluster at ~650ms (3DS verification), and ~5% are fraud checks that spike above 2s. p99 is your true SLO boundary — the mean (~{mean}ms) is misleading enough to cost you SLO credits.';
+    }
+  },
+  db:{
+    gen:function(n){
+      var d=[];
+      for(var i=0;i<Math.round(n*0.9);i++) d.push(Math.max(1,randNorm(15,5)));
+      for(var i=0;i<Math.round(n*0.09);i++) d.push(Math.max(50,randNorm(200,60)));
+      for(var i=0;i<Math.round(n*0.01);i++) d.push(Math.max(1000,randNorm(2000,300)));
+      return d;
+    },
+    shape:'Bimodal + spikes',
+    insight:function(bins,sturges,fd){
+      return '🗄 DB queries cluster tightly at ~15ms (indexed reads) with occasional full-table scans at ~200ms and rare lock-contention events above 1s. At too few bins the spike tail vanishes entirely — this is how lock events go undetected until they cascade. FD suggests '+fd+' bins to keep the tail visible without drowning in noise.';
+    }
+  }
+};
+
+function s1SetPreset(name){
+  s1Preset=name;
+  document.querySelectorAll('#s1 .mode-opt, .card:nth-child(1) .mode-opt').forEach(function(b){b.classList.remove('active');});
+  event.target.classList.add('active');
+  s1Generate();
+}
+
+function s1Generate(){
+  s1Data=s1Presets[s1Preset].gen(2000);
+  s1UpdateRules();
+  s1Draw();
+  s1UpdateStats();
+}
+
+function s1BinChange(v){
+  s1Bins=parseInt(v);
+  document.getElementById('s1-bin-val').textContent=v;
+  document.getElementById('s1-yours').textContent=v;
+  s1Draw();
+  s1UpdateInsight();
+}
+
+function s1UpdateRules(){
+  var n=s1Data.length;
+  var sturges=Math.ceil(Math.log2(n)+1);
+  var iqr=percentile(s1Data,75)-percentile(s1Data,25);
+  var range=Math.max.apply(null,s1Data)-Math.min.apply(null,s1Data);
+  var fdBinW=2*iqr*Math.pow(n,-1/3);
+  var fd=fdBinW>0?Math.ceil(range/fdBinW):sturges;
+  document.getElementById('s1-sturges').textContent=sturges+' bins';
+  document.getElementById('s1-fd').textContent=fd+' bins';
+  window._s1Sturges=sturges; window._s1FD=fd;
+  s1UpdateInsight();
+}
+
+function s1UpdateStats(){
+  var m=mean(s1Data),med=median(s1Data),p99v=percentile(s1Data,99);
+  document.getElementById('s1-mean').textContent=Math.round(m)+'ms';
+  document.getElementById('s1-median').textContent=Math.round(med)+'ms';
+  document.getElementById('s1-p99').textContent=Math.round(p99v)+'ms';
+  document.getElementById('s1-shape').textContent=s1Presets[s1Preset].shape;
+  s1UpdateInsight();
+}
+
+function s1UpdateInsight(){
+  var m=s1Data.length?Math.round(mean(s1Data)):0;
+  var txt=s1Presets[s1Preset].insight(s1Bins,window._s1Sturges||8,window._s1FD||15);
+  txt=txt.replace('{mean}',m);
+  document.getElementById('s1-insight').innerHTML=txt;
+}
+
+function s1Draw(){
+  var canvas=document.getElementById('s1-canvas');
+  drawHist(canvas,s1Data,s1Bins,{
+    lines:[
+      {value:mean(s1Data),color:'rgba(99,102,241,0.8)',label:'mean',dash:[4,3],labelY:32},
+      {value:median(s1Data),color:'rgba(16,185,129,0.8)',label:'median',dash:[4,3],labelY:20},
+      {value:percentile(s1Data,99),color:'rgba(239,68,68,0.8)',label:'p99',dash:[4,3],labelY:32}
+    ]
+  });
+}
+
+// Init Scenario 1
+s1Generate();
+window.addEventListener('resize',function(){ s1Draw(); s2Draw(); s3Draw(); });
+
+/* ══════════════════════════════════════════════════════════
+   SCENARIO 2 — PERCENTILE vs AVERAGE
+══════════════════════════════════════════════════════════ */
+var s2Data=[];
+var s2Pattern='normal';
+var s2Streaming=false;
+var s2Outliers=false;
+var s2Interval=null;
+var s2AlertFired={mean:false,p95:false,p99:false};
+var s2AlertTime={mean:null,p95:null,p99:null};
+var s2StartTime=null;
+
+var s2Patterns={
+  normal:  function(){ return Math.max(5,randNorm(150,40)); },
+  skewed:  function(){ return Math.max(5,Math.abs(randNorm(0,1))*200+50); },
+  bimodal: function(){ return Math.random()<0.7?Math.max(5,randNorm(100,25)):Math.max(150,randNorm(500,80)); }
+};
+
+function s2SetPattern(p){
+  s2Pattern=p;
+  document.querySelectorAll('.card:nth-child(2) .mode-opt').forEach(function(b){b.classList.remove('active');});
+  event.target.classList.add('active');
+}
+
+function s2ToggleStream(){
+  if(s2Streaming){
+    s2Stop();
+  } else {
+    s2Start();
+  }
+}
+
+function s2Start(){
+  s2Streaming=true;
+  s2StartTime=Date.now();
+  document.getElementById('s2-stream-btn').textContent='⏹ Stop Stream';
+  document.getElementById('s2-stream-btn').className='run-btn run-btn-busy';
+  document.getElementById('s2-inject-btn').disabled=false;
+  s2Interval=setInterval(function(){
+    var gen=s2Patterns[s2Pattern];
+    // Add 5-15 requests per tick
+    var count=5+Math.floor(Math.random()*10);
+    for(var i=0;i<count;i++){
+      var v;
+      if(s2Outliers&&Math.random()<0.05){
+        v=3000+Math.random()*4000; // slow outlier
+      } else {
+        v=gen();
+      }
+      s2Data.push(v);
+    }
+    if(s2Data.length>3000) s2Data=s2Data.slice(-3000);
+    s2UpdateStats();
+    s2Draw();
+  },200);
+}
+
+function s2Stop(){
+  s2Streaming=false;
+  clearInterval(s2Interval);
+  document.getElementById('s2-stream-btn').textContent='▶ Start Stream';
+  document.getElementById('s2-stream-btn').className='run-btn run-btn-idle';
+}
+
+function s2InjectOutliers(){
+  s2Outliers=true;
+  document.getElementById('s2-inject-btn').textContent='💉 Outliers Active';
+  document.getElementById('s2-inject-btn').style.background='rgba(239,68,68,0.3)';
+}
+
+function s2Reset(){
+  s2Stop();
+  s2Data=[];
+  s2Outliers=false;
+  s2AlertFired={mean:false,p95:false,p99:false};
+  s2AlertTime={mean:null,p95:null,p99:null};
+  s2StartTime=null;
+  document.getElementById('s2-inject-btn').disabled=true;
+  document.getElementById('s2-inject-btn').textContent='💉 Inject Slow Outliers';
+  document.getElementById('s2-inject-btn').style.background='rgba(239,68,68,0.15)';
+  document.getElementById('s2-mean-alert').classList.add('hidden');
+  document.getElementById('s2-p95-alert').classList.add('hidden');
+  document.getElementById('s2-p99-alert').classList.add('hidden');
+  document.getElementById('s2-alert-story').classList.add('hidden');
+  document.getElementById('s2-mean-val').textContent='—';
+  document.getElementById('s2-median-val').textContent='—';
+  document.getElementById('s2-p95-val').textContent='—';
+  document.getElementById('s2-p99-val').textContent='—';
+  s2Draw();
+}
+
+function s2UpdateStats(){
+  if(s2Data.length<10) return;
+  var m=mean(s2Data),med=median(s2Data),p95v=percentile(s2Data,95),p99v=percentile(s2Data,99);
+  var fmtColor=function(v,thresh,id){
+    var el=document.getElementById(id);
+    el.textContent=Math.round(v)+'ms';
+    el.style.color=v>thresh?'#f87171':'#a5b4fc';
+  };
+  fmtColor(m,300,'s2-mean-val');
+  document.getElementById('s2-median-val').textContent=Math.round(med)+'ms';
+  fmtColor(p95v,400,'s2-p95-val');
+  fmtColor(p99v,600,'s2-p99-val');
+
+  // Alert detection
+  var elapsed=s2StartTime?((Date.now()-s2StartTime)/1000).toFixed(0):0;
+  if(s2Outliers){
+    if(!s2AlertFired.p95&&p95v>400){ s2AlertFired.p95=true; s2AlertTime.p95=elapsed; document.getElementById('s2-p95-alert').classList.remove('hidden'); }
+    if(!s2AlertFired.p99&&p99v>600){ s2AlertFired.p99=true; s2AlertTime.p99=elapsed; document.getElementById('s2-p99-alert').classList.remove('hidden'); }
+    if(!s2AlertFired.mean&&m>300){ s2AlertFired.mean=true; s2AlertTime.mean=elapsed; document.getElementById('s2-mean-alert').classList.remove('hidden'); }
+    if(s2AlertFired.p99) s2ShowAlertStory();
+  }
+}
+
+function s2ShowAlertStory(){
+  var box=document.getElementById('s2-alert-story');
+  var mt=s2AlertTime.mean||'not yet';
+  var p9t=s2AlertTime.p99||'not yet';
+  var lag=s2AlertTime.mean&&s2AlertTime.p99?Math.abs(parseInt(s2AlertTime.mean)-parseInt(s2AlertTime.p99)):null;
+  box.classList.remove('hidden');
+  box.className='mt-3 text-xs rounded-lg p-3 border border-rose-500/30 bg-rose-500/5';
+  box.innerHTML='<strong class="text-rose-400">🚨 Alert comparison:</strong> p99 fired at <strong>'+p9t+'s</strong> after injection. '+(lag?'Mean-based alert fired <strong>~'+lag+'s later</strong> at '+mt+'s — by then users had already experienced '+lag+' seconds of degraded service.':'Mean threshold not yet crossed — it may never fire even though 5% of users are experiencing 3–7 second responses.');
+}
+
+function s2Draw(){
+  var canvas=document.getElementById('s2-canvas');
+  var opts={
+    outlierThreshold:s2Outliers?1500:undefined,
+    barColor:'rgba(99,102,241,0.6)'
+  };
+  if(s2Data.length>0){
+    opts.lines=[
+      {value:mean(s2Data),color:'rgba(99,102,241,0.9)',label:'mean',dash:[4,3],labelY:30},
+      {value:percentile(s2Data,95),color:'rgba(245,158,11,0.9)',label:'p95',dash:[4,3],labelY:18},
+      {value:percentile(s2Data,99),color:'rgba(239,68,68,0.9)',label:'p99',dash:[4,3],labelY:30}
+    ];
+  }
+  drawHist(canvas,s2Data.length?s2Data:[0],30,opts);
+}
+s2Draw();
+
+/* ══════════════════════════════════════════════════════════
+   SCENARIO 3 — SLO BUCKET DESIGNER
+══════════════════════════════════════════════════════════ */
+var s3Data=[];
+var s3Source='preset';
+var s3Profile='api';
+var s3SloPct=95;
+var s3SloMs=300;
+var s3BucketPreset='default';
+var s3Probing=false;
+
+var s3ApiEndpoints={
+  github:    {url:'https://api.github.com/zen',          note:'Returns a random zen motto. Pure network round-trip — no payload processing.'},
+  openmeteo: {url:'https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&current_weather=true', note:'Free weather API, no auth. Payload ~200 bytes. Shows CDN edge vs origin variance.'},
+  wikipedia: {url:'https://en.wikipedia.org/api/rest_v1/page/summary/observability', note:'Wikipedia summary for "observability". Topically appropriate 😄 Payload ~1KB.'},
+  hackernews:{url:'https://hacker-news.firebaseio.com/v0/maxitem.json', note:'Firebase single integer. Tiny payload, interesting tail behaviour from Firebase cold starts.'}
+};
+
+var s3ProfileData={
+  api:     function(n){ var d=[]; for(var i=0;i<Math.round(n*.75);i++) d.push(Math.max(5,randNorm(120,35))); for(var i=0;i<Math.round(n*.22);i++) d.push(Math.max(200,randNorm(380,70))); for(var i=0;i<Math.round(n*.03);i++) d.push(Math.max(800,randNorm(1100,150))); return d; },
+  db:      function(n){ var d=[]; for(var i=0;i<Math.round(n*.9);i++) d.push(Math.max(1,randNorm(12,4))); for(var i=0;i<Math.round(n*.09);i++) d.push(Math.max(40,randNorm(180,50))); for(var i=0;i<Math.round(n*.01);i++) d.push(Math.max(800,randNorm(1800,250))); return d; },
+  payment: function(n){ var d=[]; for(var i=0;i<Math.round(n*.6);i++) d.push(Math.max(20,randNorm(200,40))); for(var i=0;i<Math.round(n*.35);i++) d.push(Math.max(400,randNorm(700,120))); for(var i=0;i<Math.round(n*.05);i++) d.push(Math.max(2000,randNorm(3200,350))); return d; },
+  cdn:     function(n){ var d=[]; for(var i=0;i<Math.round(n*.85);i++) d.push(Math.max(2,randNorm(25,10))); for(var i=0;i<Math.round(n*.14);i++) d.push(Math.max(80,randNorm(220,60))); for(var i=0;i<Math.round(n*.01);i++) d.push(Math.max(600,randNorm(900,100))); return d; }
+};
+
+var s3BucketPresets={
+  default:  [5,10,25,50,100,250,500,1000,2500,5000,10000],
+  coarse:   [100,500,1000,5000,10000],
+  tuned:    [50,100,150,200,300,500,750,1000,2000],
+  custom:   null
+};
+
+function s3SetSource(src){
+  s3Source=src;
+  document.querySelectorAll('.api-btn[id^=src-btn]').forEach(function(b){b.classList.remove('active');});
+  document.getElementById('src-btn-'+src).classList.add('active');
+  document.getElementById('s3-preset-row').classList.toggle('hidden',src!=='preset');
+  document.getElementById('s3-probe-row').classList.toggle('hidden',src==='preset');
+  if(src!=='preset'){
+    var ep=s3ApiEndpoints[src];
+    document.getElementById('s3-probe-note').textContent=ep?ep.note:'';
+    document.getElementById('s3-probe-status').textContent='Ready to probe';
+    s3Data=[];
+    s3Draw();
+  } else {
+    s3GenerateProfile();
+  }
+}
+
+function s3SetProfile(p){
+  s3Profile=p;
+  document.querySelectorAll('.api-btn[id^=profile-btn]').forEach(function(b){b.classList.remove('active');});
+  document.getElementById('profile-btn-'+p).classList.add('active');
+  s3GenerateProfile();
+}
+
+function s3GenerateProfile(){
+  s3Data=s3ProfileData[s3Profile](2000);
+  s3Draw();
+  s3UpdateBucketAnalysis();
+}
+
+function s3SloChange(){
+  s3SloPct=parseInt(document.getElementById('s3-slo-pct').value);
+  s3SloMs=parseInt(document.getElementById('s3-slo-ms').value);
+  document.getElementById('s3-slo-pct-label').textContent=s3SloPct;
+  document.getElementById('s3-slo-ms-label').textContent=s3SloMs;
+  s3Draw();
+  s3UpdateBucketAnalysis();
+}
+
+function s3SetBuckets(preset){
+  s3BucketPreset=preset;
+  document.querySelectorAll('.card:nth-child(3) .mode-set .mode-opt').forEach(function(b){b.classList.remove('active');});
+  event.target.classList.add('active');
+  document.getElementById('s3-custom-editor').classList.toggle('hidden',preset!=='custom');
+  s3Draw();
+  s3UpdateBucketAnalysis();
+}
+
+function s3CustomBucketChange(){
+  s3Draw();
+  s3UpdateBucketAnalysis();
+}
+
+function s3GetBuckets(){
+  if(s3BucketPreset==='custom'){
+    var raw=document.getElementById('s3-custom-input').value;
+    return raw.split(',').map(function(v){return parseFloat(v.trim());}).filter(function(v){return !isNaN(v);});
+  }
+  return s3BucketPresets[s3BucketPreset];
+}
+
+/* Run live API probe */
+function s3RunProbe(){
+  if(s3Probing) return;
+  var src=s3Source;
+  var ep=s3ApiEndpoints[src];
+  if(!ep) return;
+  s3Probing=true;
+  s3Data=[];
+  var total=200;
+  var done=0;
+  var warmup=5;
+  document.getElementById('s3-probe-btn').textContent='Probing…';
+  document.getElementById('s3-probe-btn').className='run-btn run-btn-busy';
+  document.getElementById('s3-probe-status').textContent='Warming up (skipping first '+warmup+')…';
+  document.getElementById('s3-probe-progress-wrap').style.display='block';
+  document.getElementById('s3-probe-progress').style.width='0%';
+
+  function fireOne(idx){
+    var t0=performance.now();
+    fetch(ep.url,{cache:'no-store'})
+      .then(function(r){return r.text();})
+      .then(function(){
+        var t1=performance.now();
+        if(idx>=warmup) s3Data.push(t1-t0);
+        done++;
+        var pct=Math.round((done/total)*100);
+        document.getElementById('s3-probe-progress').style.width=pct+'%';
+        document.getElementById('s3-probe-status').textContent=done+'/'+total+' requests…';
+        s3Draw();
+        s3UpdateBucketAnalysis();
+      })
+      .catch(function(){
+        done++;
+      })
+      .finally(function(){
+        if(done<total){
+          setTimeout(function(){ fireOne(done); },30);
+        } else {
+          s3ProbeComplete();
+        }
+      });
+  }
+  fireOne(0);
+}
+
+function s3ProbeComplete(){
+  s3Probing=false;
+  document.getElementById('s3-probe-btn').textContent='🔍 Probe Again';
+  document.getElementById('s3-probe-btn').className='run-btn run-btn-idle';
+  document.getElementById('s3-probe-status').textContent='✅ '+s3Data.length+' measurements collected';
+  s3Draw();
+  s3UpdateBucketAnalysis();
+  // Show insight
+  var ins=document.getElementById('s3-insight');
+  ins.classList.remove('hidden');
+  var m=mean(s3Data),p=percentile(s3Data,s3SloPct),p99v=percentile(s3Data,99);
+  var src=document.querySelector('.api-btn[id^=src-btn].active');
+  var srcName=src?src.textContent.trim():'the API';
+  ins.innerHTML='🌐 <strong>Real probe results for '+srcName+':</strong> Mean '+Math.round(m)+'ms, p'+s3SloPct+' '+Math.round(p)+'ms, p99 '+Math.round(p99v)+'ms. '+(Math.round(p99v/m)>3?'Your p99 is '+Math.round(p99v/m)+'× the mean — strong evidence of a bimodal or heavy-tailed distribution. A mean-based alert would completely miss the worst 1% of requests.':'Distribution is relatively compact — this API delivers consistent latency from your location.');
+}
+
+function s3UpdateBucketAnalysis(){
+  if(s3Data.length<10) return;
+  var buckets=s3GetBuckets();
+  if(!buckets||buckets.length<2) return;
+  var sloMs=s3SloMs;
+  var sloPct=s3SloPct;
+
+  // True percentile
+  var trueP=percentile(s3Data,sloPct);
+
+  // Prometheus-style: find the bucket that contains the target cumulative fraction
+  var n=s3Data.length;
+  var targetCount=Math.floor(n*sloPct/100);
+  var sorted=[].concat(s3Data).sort(function(a,b){return a-b;});
+
+  // Count into buckets
+  var bCounts=buckets.map(function(b){ return sorted.filter(function(v){return v<=b;}).length; });
+  // Find the bucket boundary just above the target count
+  var bucketEstimate=trueP; // fallback
+  for(var i=0;i<buckets.length;i++){
+    if(bCounts[i]>=targetCount){
+      // Interpolate between bucket[i-1] and bucket[i]
+      var lo=i>0?buckets[i-1]:0;
+      var hi=buckets[i];
+      var loCount=i>0?bCounts[i-1]:0;
+      var hiCount=bCounts[i];
+      if(hiCount>loCount){
+        bucketEstimate=lo+(hi-lo)*(targetCount-loCount)/(hiCount-loCount);
+      } else {
+        bucketEstimate=hi;
+      }
+      break;
+    }
+  }
+
+  var err=Math.abs(bucketEstimate-trueP)/trueP*100;
+  var sloPass=trueP<=sloMs;
+
+  // Update stats
+  document.getElementById('s3-true-pct').textContent=Math.round(trueP)+'ms';
+  document.getElementById('s3-bucket-pct').textContent=Math.round(bucketEstimate)+'ms';
+  var errEl=document.getElementById('s3-error-pct');
+  errEl.textContent=Math.round(err)+'%';
+  errEl.style.color=err>20?'#f87171':err>5?'#fbbf24':'#34d399';
+
+  var verdictEl=document.getElementById('s3-slo-status');
+  verdictEl.textContent=sloPass?'✅ Passing':'❌ Breaching';
+  verdictEl.style.color=sloPass?'#34d399':'#f87171';
+
+  // Bucket fill bars
+  var list=document.getElementById('s3-bucket-list');
+  list.innerHTML='';
+  var minV=Math.min.apply(null,s3Data);
+  var maxV=Math.max.apply(null,s3Data);
+
+  for(var j=0;j<buckets.length;j++){
+    var lo2=j>0?buckets[j-1]:0;
+    var hi2=buckets[j];
+    if(hi2<minV) continue;
+    var cnt=sorted.filter(function(v){return v>lo2&&v<=hi2;}).length;
+    var pct=Math.round(cnt/n*100);
+    var isSloRelevant=lo2<sloMs&&hi2>=sloMs;
+    var row=document.createElement('div');
+    row.className='bucket-row'+(isSloRelevant?' highlight':'');
+    row.innerHTML='<span style="min-width:110px;color:#94a3b8;font-family:monospace;">'+(lo2<1?'0':lo2)+'–'+hi2+'ms</span>'
+      +'<div style="flex:1;background:rgba(99,102,241,0.08);border-radius:3px;height:8px;overflow:hidden;">'
+      +'<div class="bucket-fill" style="width:'+Math.min(pct*3,100)+'%;background:'+(isSloRelevant?'#f59e0b':'rgba(99,102,241,0.5)')+';"></div>'
+      +'</div>'
+      +'<span style="min-width:60px;text-align:right;color:#64748b;">'+cnt+' reqs ('+pct+'%)</span>'
+      +(isSloRelevant?'<span style="color:#f59e0b;font-size:0.65rem;font-weight:700;"> ← SLO boundary</span>':'');
+    list.appendChild(row);
+  }
+
+  // Show insight for preset
+  if(s3Source==='preset'){
+    var ins=document.getElementById('s3-insight');
+    ins.classList.remove('hidden');
+    var bucketName={'default':'Default Prometheus','coarse':'Coarse (5 buckets)','tuned':'Tuned buckets','custom':'Custom buckets'}[s3BucketPreset];
+    ins.innerHTML='<strong>'+bucketName+'</strong> — interpolation error: <strong style="color:'+(err>20?'#f87171':err>5?'#fbbf24':'#34d399')+'">'+Math.round(err)+'%</strong>. '
+      +(err>20?'This error means Prometheus could report your p'+sloPct+' as '+Math.round(bucketEstimate)+'ms when the true value is '+Math.round(trueP)+'ms — a <strong>'+Math.round(Math.abs(bucketEstimate-trueP))+'ms blind spot</strong>. Default Prometheus buckets were designed for HTTP response codes, not high-resolution latency SLOs.'
+        :err>5?'Moderate error. Consider shifting bucket boundaries closer to your p50–p99 range to sharpen the estimate.'
+        :'Excellent bucket placement. Less than 5% interpolation error means your Prometheus histogram accurately reflects your true latency percentiles.');
+  }
+}
+
+function s3Draw(){
+  var canvas=document.getElementById('s3-canvas');
+  var buckets=s3GetBuckets();
+  var opts={
+    buckets:buckets,
+    sloLine:s3SloMs
+  };
+  if(s3Data.length>0){
+    opts.lines=[
+      {value:percentile(s3Data,s3SloPct),color:'rgba(99,102,241,0.8)',label:'p'+s3SloPct,dash:[4,3],labelY:20}
+    ];
+  }
+  drawHist(canvas,s3Data.length?s3Data:[50,100,200,300,500,800,1200],25,opts);
+}
+
+// Init
+s3GenerateProfile();
+
+/* ══════════════════════════════════════════════════════════
+   SHARED CANVAS RESIZE
+══════════════════════════════════════════════════════════ */
+window.addEventListener('resize',function(){
+  s1Draw(); s2Draw(); s3Draw();
+});
 </script>
-<script src="shared/nav.js"></script>
 </body>
 </html>
