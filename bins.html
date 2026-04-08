@@ -327,7 +327,9 @@ function getPreferredTheme(){return localStorage.getItem('de-theme')||'dark';}
 function applyTheme(t){
   document.documentElement.classList.toggle('dark',t==='dark');
   localStorage.setItem('de-theme',t);
-  s1Draw(); s2Draw(); s3Draw();
+  try { s1Draw(); } catch(e){}
+  try { s2Draw(); } catch(e){}
+  try { s3Draw(); } catch(e){}
 }
 applyTheme(getPreferredTheme());
 document.addEventListener('themeChanged',function(e){ applyTheme(e.detail); });
@@ -726,18 +728,19 @@ function s2ShowAlertStory(){
 
 function s2Draw(){
   var canvas=document.getElementById('s2-canvas');
+  var data=s2Data||[];
   var opts={
     outlierThreshold:s2Outliers?1500:undefined,
     barColor:'rgba(99,102,241,0.6)'
   };
-  if(s2Data.length>0){
+  if(data.length>0){
     opts.lines=[
-      {value:mean(s2Data),color:'rgba(99,102,241,0.9)',label:'mean',dash:[4,3],labelY:30},
-      {value:percentile(s2Data,95),color:'rgba(245,158,11,0.9)',label:'p95',dash:[4,3],labelY:18},
-      {value:percentile(s2Data,99),color:'rgba(239,68,68,0.9)',label:'p99',dash:[4,3],labelY:30}
+      {value:mean(data),color:'rgba(99,102,241,0.9)',label:'mean',dash:[4,3],labelY:30},
+      {value:percentile(data,95),color:'rgba(245,158,11,0.9)',label:'p95',dash:[4,3],labelY:18},
+      {value:percentile(data,99),color:'rgba(239,68,68,0.9)',label:'p99',dash:[4,3],labelY:30}
     ];
   }
-  drawHist(canvas,s2Data.length?s2Data:[0],30,opts);
+  drawHist(canvas,data.length?data:[0],30,opts);
 }
 s2Draw();
 
