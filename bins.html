@@ -351,11 +351,23 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
       </div>
       <div class="stat-box">
         <div class="text-lg font-bold" id="s3-slo-status">—</div>
-        <div class="text-xs text-slate-400 mt-0.5">SLO Verdict</div>
+        <div class="text-xs text-slate-400 mt-0.5">SLO Verdict <button onclick="document.getElementById('s3-verdict-explain').classList.toggle('hidden')" style="background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.7rem;padding:0;" title="What does this mean?">ⓘ</button></div>
       </div>
     </div>
 
     <div id="s3-insight" class="mt-3 text-xs text-slate-300 rounded-lg p-3 border border-indigo-500/20 bg-indigo-500/5 hidden"></div>
+
+    <div id="s3-verdict-explain" class="hidden mt-3 text-xs rounded-lg p-3 border border-indigo-500/20 bg-indigo-500/5 text-slate-300">
+      <div class="mb-1.5"><strong class="text-emerald-400">✅ Passing</strong> — your true p<span class="font-mono">N</span> (the actual Nth percentile from your requests) is <em>below</em> the ms target you set. The SLO is being met.</div>
+      <div class="mb-1.5"><strong class="text-rose-400">❌ Breaching</strong> — your true pN exceeds the target. That percentage of requests are slower than your SLO allows — even if only by 1ms, it counts as a breach.</div>
+      <div class="text-slate-400 border-t border-slate-700/40 pt-2 mt-1.5">⚠️ <strong class="text-amber-400">Watch out:</strong> Prometheus's Bucket Estimate above may disagree with the True Percentile. If your SLO boundary falls inside a wide bucket, Prometheus can report <em>Passing</em> when you're actually <em>Breaching</em> — or vice versa. That mismatch is exactly what the Interpolation Error measures. Narrow your buckets around the SLO target to close the gap.</div>
+    </div>
+
+    <div class="mt-4 flex items-center gap-3 flex-wrap">
+      <button class="run-btn run-btn-idle" onclick="s3SuggestOptimal()" id="s3-suggest-btn">✨ Suggest Optimal Settings</button>
+      <span class="text-xs text-slate-500">Computes a data-driven SLO target and bucket boundaries from your actual distribution</span>
+    </div>
+    <div id="s3-suggest-result" class="hidden mt-2 text-xs text-slate-300 rounded-lg p-3 border border-emerald-500/20 bg-emerald-500/5"></div>
   </section>
 
   <!-- ═══════════════════════════════════════════════════
@@ -965,6 +977,81 @@ function s3CustomBucketChange(){
   }
   s3Draw();
   s3UpdateBucketAnalysis();
+}
+
+function s3SuggestOptimal(){
+  if(!s3Data||s3Data.length<10){
+    document.getElementById('s3-suggest-result').innerHTML='<span class="text-amber-400">⚠ No data yet — generate a preset profile or run a Live API Probe first.</span>';
+    document.getElementById('s3-suggest-result').classList.remove('hidden');
+    return;
+  }
+  var p50=percentile(s3Data,50);
+  var p75=percentile(s3Data,75);
+  var p90=percentile(s3Data,90);
+  var p95=percentile(s3Data,95);
+  var p99=percentile(s3Data,99);
+
+  // Suggest SLO: current %ile unchanged, ms = p99 + 15% headroom, rounded up to nearest 50ms
+  var suggestedMs=Math.ceil(p99*1.15/50)*50;
+  suggestedMs=Math.min(Math.max(suggestedMs,50),2000);
+
+  // Suggest SLO percentile = 99
+  var suggestedPct=99;
+
+  // Data-anchored boundaries: clustered around actual distribution shape
+  var rawBounds=[
+    Math.round(p50*0.25),
+    Math.round(p50*0.5),
+    Math.round(p50),
+    Math.round((p50+p75)/2),
+    Math.round(p75),
+    Math.round((p75+p90)/2),
+    Math.round(p90),
+    Math.round(p95),
+    Math.round(p99),
+    Math.round(p99*1.2),
+    Math.round(p99*1.5)
+  ].filter(function(v){return v>0;});
+  var seen={};
+  var boundaries=rawBounds.filter(function(v){if(seen[v])return false;seen[v]=true;return true;})
+                           .sort(function(a,b){return a-b;});
+  while(boundaries.length>15) boundaries.pop();
+
+  // Apply SLO sliders
+  document.getElementById('s3-slo-pct').value=suggestedPct;
+  document.getElementById('s3-slo-ms').value=suggestedMs;
+  s3SloPct=suggestedPct;
+  s3SloMs=suggestedMs;
+  document.getElementById('s3-slo-pct-label').textContent=suggestedPct;
+  document.getElementById('s3-slo-ms-label').textContent=suggestedMs;
+
+  // Switch to Custom preset (without relying on event.target)
+  s3BucketPreset='custom';
+  document.querySelectorAll('.mode-opt').forEach(function(b){
+    b.classList.remove('active');
+    if(b.textContent.trim()==='Custom') b.classList.add('active');
+  });
+  document.getElementById('s3-custom-editor').classList.remove('hidden');
+
+  // Apply boundaries to textarea and sync slider
+  document.getElementById('s3-custom-input').value=boundaries.join(',');
+  var slider=document.getElementById('s3-custom-count');
+  var clampedCount=Math.min(Math.max(boundaries.length,3),15);
+  slider.value=clampedCount;
+  document.getElementById('s3-custom-count-label').textContent=clampedCount;
+
+  s3Draw();
+  s3UpdateBucketAnalysis();
+
+  var res=document.getElementById('s3-suggest-result');
+  res.innerHTML='✨ <strong>Applied optimal settings:</strong> p'+suggestedPct+' &lt; '+suggestedMs+'ms · '
+    +boundaries.length+' boundaries anchored at your data percentiles — '
+    +'p50 <span class="font-mono text-indigo-300">'+Math.round(p50)+'ms</span>, '
+    +'p90 <span class="font-mono text-indigo-300">'+Math.round(p90)+'ms</span>, '
+    +'p99 <span class="font-mono text-indigo-300">'+Math.round(p99)+'ms</span>. '
+    +'Boundaries are dense near the tail, giving Prometheus the resolution it needs. '
+    +'Switch to <em>Default Prometheus</em> to compare the interpolation error.';
+  res.classList.remove('hidden');
 }
 
 function s3GetBuckets(){
