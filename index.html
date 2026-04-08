@@ -49,12 +49,21 @@
   // Render topic cards
   var topics = [
     { icon: '🔮', title: 'Clustering Showdown', desc: 'KMeans vs DBSCAN — interactive comparison with benchmarks, business analysis, and scaling tests.', href: 'clustering.html', status: 'live' },
-    { icon: '📊', title: 'Bins & Histograms', desc: 'Understanding data distribution through binning strategies. Bin width, density plots, and skewness detection.', href: 'bins.html', status: 'live' },
+    { icon: '📊', title: 'Bins & Histograms', desc: 'Understanding data distribution through binning strategies. Bin width, density plots, and skewness detection.', href: 'bins.html', status: 'live', tech: [
+      { name: 'GitHub API', slug: 'github', color: 'a8b4c8' },
+      { name: 'Wikipedia', slug: 'wikipedia', color: 'a8b4c8' },
+      { name: 'Hacker News', slug: 'ycombinator', color: 'F0652F' },
+      { name: 'Open-Meteo', slug: 'openmeteo', color: '4EB0A9' },
+    ]},
     { icon: '🔥', title: 'Failure Detection', desc: 'From 47 alerts to 3 root causes. Interactive alert storm correlator — tune grouping rules and watch the noise collapse.', href: 'failure-detection.html', status: 'live' },
     { icon: '📈', title: 'Regression Analysis', desc: 'From linear regression to real-world predictive modeling. When it works, when it fails, and how to interpret results.', href: 'regression.html', status: 'soon' },
     { icon: '⚡', title: 'Spikes & Anomaly Detection', desc: 'Detecting unusual spikes in metrics, traffic, and system behavior with statistical methods.', href: 'spikes.html', status: 'soon' },
     { icon: '📋', title: 'Log-Driven Development', desc: 'Using structured logging as a foundation for observability, debugging, and data pipelines.', href: 'log-driven.html', status: 'live' },
-    { icon: '📡', title: 'Bimodal Latency', desc: 'Real HTTP requests to a live CF Worker + Azure PostgreSQL + Redis. Watch cache-aside create two latency peaks your average metric hides.', href: 'bimodal.html', status: 'live' },
+    { icon: '📡', title: 'Bimodal Latency', desc: 'Real HTTP requests to a live CF Worker + Azure PostgreSQL + Redis. Watch cache-aside create two latency peaks your average metric hides.', href: 'bimodal.html', status: 'live', tech: [
+      { name: 'Cloudflare', slug: 'cloudflare', color: 'F48120' },
+      { name: 'Azure PostgreSQL', slug: 'microsoftazure', color: '0089D6' },
+      { name: 'Redis', slug: 'redis', color: 'FF4438' },
+    ]},
   ];
 
   var grid = document.getElementById('topic-grid');
@@ -62,6 +71,17 @@
     var badge = t.status === 'live'
       ? '<span class="status-live">● Live</span>'
       : '<span class="status-soon">🚧 Coming Soon</span>';
+    var techBadges = '';
+    if (t.tech && t.tech.length) {
+      techBadges = '<div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-700/50">' +
+        t.tech.map(function(tech) {
+          return '<span class="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-800/60 rounded-full px-2.5 py-1">' +
+            '<img src="https://cdn.simpleicons.org/' + tech.slug + '/' + tech.color + '" width="14" height="14" alt="' + tech.name + '" style="display:inline-block;vertical-align:middle" />' +
+            tech.name +
+          '</span>';
+        }).join('') +
+      '</div>';
+    }
     return '<a class="card topic-card" href="' + t.href + '">' +
       '<div class="flex items-center justify-between mb-3">' +
         '<span class="text-3xl">' + t.icon + '</span>' +
@@ -69,6 +89,7 @@
       '</div>' +
       '<h2 class="text-lg font-bold mb-1.5 text-slate-200">' + t.title + '</h2>' +
       '<p class="text-sm text-slate-400 leading-relaxed">' + t.desc + '</p>' +
+      techBadges +
     '</a>';
   }).join('');
 </script>
