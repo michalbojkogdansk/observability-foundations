@@ -218,7 +218,7 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
         <button class="api-btn active" id="profile-btn-api" onclick="s3SetProfile('api')">API Gateway</button>
         <button class="api-btn" id="profile-btn-db" onclick="s3SetProfile('db')">Database</button>
         <button class="api-btn" id="profile-btn-payment" onclick="s3SetProfile('payment')">Payment</button>
-        <button class="api-btn" id="profile-btn-cdn" onclick="s3SetProfile('cdn')">CDN / Edge</button>
+        <button class="api-btn" id="profile-btn-cdn" onclick="s3SetProfile('cdn')"><abbr title="Content Delivery Network — a globally distributed network of servers that caches and delivers static assets (images, JS, CSS) from nodes close to the user, minimising round-trip latency." style="text-decoration:none">CDN</abbr> / Edge</button>
       </div>
 
       <!-- Live probe row (shown when source=api) -->
@@ -790,7 +790,7 @@ var s3Probing=false;
 
 var s3ApiEndpoints={
   github:    {url:'https://api.github.com/zen',          note:'Returns a random zen motto. Pure network round-trip — no payload processing.'},
-  openmeteo: {url:'https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&current_weather=true', note:'Free weather API, no auth. Payload ~200 bytes. Shows CDN edge vs origin variance.'},
+  openmeteo: {url:'https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&current_weather=true', note:'Free weather API, no auth. Payload ~200 bytes. Shows CDN (Content Delivery Network) edge vs origin variance.'},
   wikipedia: {url:'https://en.wikipedia.org/api/rest_v1/page/summary/observability', note:'Wikipedia summary for "observability". Topically appropriate 😄 Payload ~1KB.'},
   hackernews:{url:'https://hacker-news.firebaseio.com/v0/maxitem.json', note:'Firebase single integer. Tiny payload, interesting tail behaviour from Firebase cold starts.'}
 };
