@@ -75,9 +75,8 @@
     if (t.tech && t.tech.length) {
       techBadges = '<div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-700/50">' +
         t.tech.map(function(tech) {
-          return '<span class="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-full px-2.5 py-1">' +
-            '<img src="https://cdn.simpleicons.org/' + tech.slug + '/' + tech.color + '" width="14" height="14" alt="' + tech.name + '" style="display:inline-block;vertical-align:middle" />' +
-            tech.name +
+          return '<span class="flex items-center justify-center bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-full p-1.5" title="' + tech.name + '">' +
+            '<img src="https://cdn.simpleicons.org/' + tech.slug + '/' + tech.color + '" width="16" height="16" alt="' + tech.name + '" title="' + tech.name + '" style="display:inline-block;vertical-align:middle" />' +
           '</span>';
         }).join('') +
       '</div>';

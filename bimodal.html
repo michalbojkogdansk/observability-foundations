@@ -98,6 +98,11 @@
             <button onclick="setConc(10,this)" class="conc-btn px-3 py-2 rounded-lg text-sm font-medium border transition-all border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400">10</button>
             <button onclick="setConc(20,this)" class="conc-btn px-3 py-2 rounded-lg text-sm font-medium border transition-all border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400">20</button>
           </div>
+          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            How many requests fly in parallel. <strong class="text-slate-700 dark:text-slate-300">1</strong> = sequential (pure queue, clear separation of cache vs DB times).
+            <strong class="text-slate-700 dark:text-slate-300">5–20</strong> = realistic production load — the Cloudflare Worker handles them simultaneously, Redis and PostgreSQL serve different requests at the same time, and latencies can overlap.
+            Higher concurrency reveals whether your stack <em>degrades gracefully</em> under pressure or collapses into a single slow blob on the histogram.
+          </p>
         </div>
       </div>
 
