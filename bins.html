@@ -68,22 +68,26 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
 <body class="min-h-screen">
 <div id="site-nav"></div>
 
-<main class="max-w-7xl mx-auto px-4 pt-20 pb-16">
-
-  <!-- Header -->
-  <div class="mb-8">
-    <div class="flex items-center gap-3 mb-2">
-      <span class="text-3xl">📊</span>
-      <h1 class="text-2xl font-bold">Bins &amp; Histograms</h1>
+<header class="hero-gradient py-5 px-6 border-b border-indigo-500/10">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex items-center gap-3 mb-1">
+      <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">
+        <span class="text-indigo-400">Bins</span>
+        <span class="text-slate-500 mx-2">&amp;</span>
+        <span class="text-pink-400">Histograms</span>
+      </h1>
       <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">● Live</span>
     </div>
-    <p class="text-slate-400 text-sm max-w-2xl">Your p99 is probably lying to you. Your average is definitely lying to you. Histograms reveal the shape of your data — and the shape is where the truth lives.</p>
+    <p class="text-slate-400 text-sm max-w-xl">Your p99 is probably lying to you. Your average is definitely lying to you. Histograms reveal the shape of your data — and the shape is where the truth lives.</p>
   </div>
+</header>
+
+<main class="px-4 md:px-8 pb-8">
 
   <!-- ═══════════════════════════════════════════════════
        SCENARIO 1 — BIN WIDTH PROBLEM
   ═══════════════════════════════════════════════════ -->
-  <section class="card p-6 mb-6">
+  <section class="glass-card p-6 mb-6">
     <div class="flex items-start justify-between gap-4 mb-1">
       <div>
         <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Scenario 1</span>
@@ -129,7 +133,7 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
   <!-- ═══════════════════════════════════════════════════
        SCENARIO 2 — PERCENTILE vs AVERAGE SHOWDOWN
   ═══════════════════════════════════════════════════ -->
-  <section class="card p-6 mb-6">
+  <section class="glass-card p-6 mb-6">
     <div class="flex items-start justify-between gap-4 mb-1">
       <div>
         <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Scenario 2</span>
@@ -182,7 +186,7 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
   <!-- ═══════════════════════════════════════════════════
        SCENARIO 3 — SLO BUCKET DESIGNER
   ═══════════════════════════════════════════════════ -->
-  <section class="card p-6 mb-6">
+  <section class="glass-card p-6 mb-6">
     <div class="flex items-start justify-between gap-4 mb-1">
       <div>
         <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Scenario 3</span>
@@ -292,7 +296,7 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
   <!-- ═══════════════════════════════════════════════════
        FURTHER READING
   ═══════════════════════════════════════════════════ -->
-  <section class="card p-6 mb-6">
+  <section class="glass-card p-6 mb-6">
     <h2 class="text-base font-bold mb-4">📚 Further Reading</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <a href="https://medium.com/observability-is-engineering/how-can-i-find-customers-i-should-focus-on-elbow-to-the-rescue-7eaed4d46d2d" target="_blank" class="block p-4 rounded-xl border border-slate-700/40 hover:border-indigo-500/40 transition-colors no-underline">
