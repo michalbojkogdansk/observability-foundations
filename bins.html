@@ -322,6 +322,32 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
         <div class="text-xs text-slate-400">Latency histograms turn raw log streams into actionable SLO dashboards — how benchmarking and binning work together.</div>
       </a>
     </div>
+
+    <div class="mt-6 pt-5 border-t border-slate-700/40">
+      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">📖 On Prometheus Bucket Design</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <a href="https://prometheus.io/docs/practices/histograms/#errors-of-quantile-estimation" target="_blank" class="block p-4 rounded-xl border border-slate-700/40 hover:border-indigo-500/40 transition-colors no-underline">
+          <div class="text-xs text-emerald-400 font-semibold mb-1">Prometheus Official Docs</div>
+          <div class="text-sm font-semibold mb-1">Errors of Quantile Estimation</div>
+          <div class="text-xs text-slate-400">The official documentation showing how interpolation across wide bucket boundaries causes p95/p99 errors — with a concrete numerical example of an SLO breach being misreported.</div>
+        </a>
+        <a href="https://medium.com/mercari-engineering/have-you-been-using-histogram-metrics-correctly-730c9547a7a9" target="_blank" class="block p-4 rounded-xl border border-slate-700/40 hover:border-indigo-500/40 transition-colors no-underline">
+          <div class="text-xs text-emerald-400 font-semibold mb-1">Mercari Engineering · 2022</div>
+          <div class="text-sm font-semibold mb-1">Have You Been Using Histogram Metrics Correctly?</div>
+          <div class="text-xs text-slate-400">"The default buckets may not be suitable for monitoring your application." Shows with production data how default buckets cause large quantile errors near SLO thresholds.</div>
+        </a>
+        <a href="https://last9.io/blog/histogram-buckets-in-prometheus/" target="_blank" class="block p-4 rounded-xl border border-slate-700/40 hover:border-indigo-500/40 transition-colors no-underline">
+          <div class="text-xs text-emerald-400 font-semibold mb-1">Last9 · 2025</div>
+          <div class="text-sm font-semibold mb-1">Histogram Buckets in Prometheus Made Simple</div>
+          <div class="text-xs text-slate-400">Practical guide on why default buckets break for SLOs, with service-type-specific bucket recommendations for APIs, databases, and payment services.</div>
+        </a>
+        <div class="block p-4 rounded-xl border border-slate-700/40">
+          <div class="text-xs text-emerald-400 font-semibold mb-1">O'Reilly · Brian Brazil · 2018</div>
+          <div class="text-sm font-semibold mb-1">Prometheus: Up & Running — Chapter 3, "Buckets"</div>
+          <div class="text-xs text-slate-400">"The default buckets cover a range of latencies intended for a web application… override them if the defaults are not suitable, or to add explicit buckets for SLA quantiles." — written by a core Prometheus developer.</div>
+        </div>
+      </div>
+    </div>
   </section>
 
 </main>
@@ -984,7 +1010,7 @@ function s3UpdateBucketAnalysis(){
     ins.classList.remove('hidden');
     var bucketName={'default':'Default Prometheus','coarse':'Coarse (5 buckets)','tuned':'Tuned buckets','custom':'Custom buckets'}[s3BucketPreset];
     ins.innerHTML='<strong>'+bucketName+'</strong> — interpolation error: <strong style="color:'+(err>20?'#f87171':err>5?'#fbbf24':'#34d399')+'">'+Math.round(err)+'%</strong>. '
-      +(err>20?'This error means Prometheus could report your p'+sloPct+' as '+Math.round(bucketEstimate)+'ms when the true value is '+Math.round(trueP)+'ms — a <strong>'+Math.round(Math.abs(bucketEstimate-trueP))+'ms blind spot</strong>. Default Prometheus buckets were designed for HTTP response codes, not high-resolution latency SLOs.'
+      +(err>20?'This error means Prometheus could report your p'+sloPct+' as '+Math.round(bucketEstimate)+'ms when the true value is '+Math.round(trueP)+'ms — a <strong>'+Math.round(Math.abs(bucketEstimate-trueP))+'ms blind spot</strong>. Default Prometheus buckets were designed for general-purpose HTTP latency — not high-resolution SLOs. Interpolation error across wide bucket boundaries can be as large as the gap between consecutive buckets.'
         :err>5?'Moderate error. Consider shifting bucket boundaries closer to your p50–p99 range to sharpen the estimate.'
         :'Excellent bucket placement. Less than 5% interpolation error means your Prometheus histogram accurately reflects your true latency percentiles.');
   }
