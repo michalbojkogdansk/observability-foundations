@@ -538,7 +538,7 @@ var s1Presets={
 
 function s1SetPreset(name){
   s1Preset=name;
-  document.querySelectorAll('#s1 .mode-opt, .card:nth-child(1) .mode-opt').forEach(function(b){b.classList.remove('active');});
+  event.target.parentElement.querySelectorAll('.mode-opt').forEach(function(b){b.classList.remove('active');});
   event.target.classList.add('active');
   s1Generate();
 }
@@ -622,7 +622,7 @@ var s2Patterns={
 
 function s2SetPattern(p){
   s2Pattern=p;
-  document.querySelectorAll('.card:nth-child(2) .mode-opt').forEach(function(b){b.classList.remove('active');});
+  event.target.parentElement.querySelectorAll('.mode-opt').forEach(function(b){b.classList.remove('active');});
   event.target.classList.add('active');
 }
 
