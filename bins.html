@@ -251,7 +251,7 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
       </div>
       <div>
         <div class="text-xs text-slate-400 mb-1 font-semibold">Bucket Preset
-          <button onclick="this.nextElementSibling.nextElementSibling.classList.toggle('hidden')" style="margin-left:6px;background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.75rem;padding:0;" title="What do these mean?">ⓘ What are these?</button>
+          <button onclick="document.getElementById('s3-bucket-explain').classList.toggle('hidden')" style="margin-left:6px;background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.75rem;padding:0;" title="What do these mean?">ⓘ What are these?</button>
         </div>
         <div class="mode-set flex-wrap">
           <button class="mode-opt active" onclick="s3SetBuckets('default')">Default Prometheus</button>
@@ -259,7 +259,7 @@ html:not(.dark) .bucket-row { background:rgba(248,250,252,0.8); }
           <button class="mode-opt" onclick="s3SetBuckets('tuned')">Tuned</button>
           <button class="mode-opt" onclick="s3SetBuckets('custom')">Custom</button>
         </div>
-        <div class="hidden mt-2 mb-1 p-3 rounded-lg text-xs leading-relaxed" style="background:rgba(15,23,42,0.95);border:1px solid rgba(99,102,241,0.3);color:#f1f5f9;">
+        <div id="s3-bucket-explain" class="hidden mt-2 mb-1 p-3 rounded-lg text-xs leading-relaxed" style="background:rgba(15,23,42,0.95);border:1px solid rgba(99,102,241,0.3);color:#f1f5f9;">
           <div style="margin-bottom:8px;"><span style="color:#f59e0b;font-weight:700;">Default Prometheus</span> — 11 buckets from 5ms to 10s (<code>.005 .01 .025 .05 .1 .25 .5 1 2.5 5 10</code>). A sensible starting point for any HTTP service. Wide gaps in the middle (250ms–500ms) cause large interpolation errors near SLO thresholds. <em>Most teams never change this.</em></div>
           <div style="margin-bottom:8px;"><span style="color:#818cf8;font-weight:700;">Coarse</span> — only 5 buckets across a wide range. Fast to query, minimal cardinality cost, but very low resolution. Useful for high-throughput background jobs where rough visibility is enough. <em>Expect p95/p99 errors of 100ms+.</em></div>
           <div style="margin-bottom:8px;"><span style="color:#34d399;font-weight:700;">Tuned</span> — buckets clustered tightly around your actual SLO threshold. Maximises interpolation accuracy where it matters most. Requires knowing your latency profile upfront. <em>This is the best choice once you have real traffic data.</em></div>
