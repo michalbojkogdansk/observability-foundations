@@ -1049,20 +1049,32 @@ function s3UpdateBucketAnalysis(){
   var minV=Math.min.apply(null,s3Data);
   var maxV=Math.max.apply(null,s3Data);
 
+  // Show note when some boundaries fall outside the chart visible X range
+  var visibleCount=buckets.filter(function(b){return b>=minV&&b<=maxV;}).length;
+  var totalCount=buckets.length;
+  if(visibleCount<totalCount){
+    var note=document.createElement('div');
+    note.style.cssText='font-size:0.72rem;color:#94a3b8;margin-bottom:6px;padding:4px 6px;background:rgba(99,102,241,0.07);border-radius:6px;border:1px solid rgba(99,102,241,0.15);';
+    note.innerHTML='<strong>'+visibleCount+' of '+totalCount+'</strong> boundaries visible on chart — '+(totalCount-visibleCount)+' are beyond the data range and shown greyed out below.';
+    list.appendChild(note);
+  }
+
   for(var j=0;j<buckets.length;j++){
     var lo2=j>0?buckets[j-1]:0;
     var hi2=buckets[j];
     if(hi2<minV) continue;
-    var cnt=sorted.filter(function(v){return v>lo2&&v<=hi2;}).length;
+    var outOfRange=lo2>maxV;
+    var cnt=outOfRange?0:sorted.filter(function(v){return v>lo2&&v<=hi2;}).length;
     var pct=Math.round(cnt/n*100);
-    var isSloRelevant=lo2<sloMs&&hi2>=sloMs;
+    var isSloRelevant=!outOfRange&&lo2<sloMs&&hi2>=sloMs;
     var row=document.createElement('div');
     row.className='bucket-row'+(isSloRelevant?' highlight':'');
+    if(outOfRange) row.style.opacity='0.38';
     row.innerHTML='<span style="min-width:110px;color:#94a3b8;font-family:monospace;">'+(lo2<1?'0':lo2)+'–'+hi2+'ms</span>'
       +'<div style="flex:1;background:rgba(99,102,241,0.08);border-radius:3px;height:8px;overflow:hidden;">'
-      +'<div class="bucket-fill" style="width:'+Math.min(pct*3,100)+'%;background:'+(isSloRelevant?'#f59e0b':'rgba(99,102,241,0.5)')+';"></div>'
+      +(outOfRange?'<div style="font-size:0.65rem;color:#64748b;line-height:8px;padding-left:4px;">beyond data range</div>':'<div class="bucket-fill" style="width:'+Math.min(pct*3,100)+'%;background:'+(isSloRelevant?'#f59e0b':'rgba(99,102,241,0.5)')+';"></div>')
       +'</div>'
-      +'<span style="min-width:60px;text-align:right;color:#64748b;">'+cnt+' reqs ('+pct+'%)</span>'
+      +'<span style="min-width:60px;text-align:right;color:#64748b;">'+(outOfRange?'—':cnt+' reqs ('+pct+'%)')+'</span>'
       +(isSloRelevant?'<span style="color:#f59e0b;font-size:0.65rem;font-weight:700;"> ← SLO boundary</span>':'');
     list.appendChild(row);
   }
