@@ -13,84 +13,83 @@
 <div id="site-nav"></div>
 
 <main class="max-w-7xl mx-auto px-4 py-10">
-  <!-- Hero -->
-  <div class="text-center mb-10">
-    <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight mb-3">
-      <span class="text-slate-200">Data Engineering</span>
-      <span class="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent"> Foundations</span>
-    </h1>
-    <p class="text-slate-400 text-lg max-w-2xl mx-auto">Interactive visual lectures for data engineering concepts. Pick a topic, explore the visuals, run the algorithms.</p>
-  </div>
+ <!-- Hero -->
+ <div class="text-center mb-10">
+ <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight mb-3 text-slate-900 dark:text-white">
+ Data Engineering Foundations
+ </h1>
+ <p class="text-slate-400 text-lg max-w-2xl mx-auto">Interactive visual lectures for data engineering concepts. Pick a topic, explore the visuals, run the algorithms.</p>
+ </div>
 
-  <!-- Topic Grid -->
-  <div class="topic-grid" id="topic-grid"></div>
+ <!-- Topic Grid -->
+ <div class="topic-grid" id="topic-grid"></div>
 </main>
 
 <footer class="text-center py-6 text-slate-500 text-xs border-t border-slate-800/30 mt-10">
-  Built for conference demos &middot; Algorithms run 100% in your browser &middot; No data leaves your machine
+ Built for conference demos &middot; Algorithms run 100% in your browser &middot; No data leaves your machine
 </footer>
 
 <script>
-  function getPreferredTheme() {
-    return localStorage.getItem('de-theme') || 'dark';
-  }
-  function applyTheme(theme) {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    localStorage.setItem('de-theme', theme);
-  }
-  function toggleTheme() {
-    applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark');
-    // Update toggle icon in nav
-    var btn = document.getElementById('nav-theme-toggle');
-    if (btn) btn.textContent = document.documentElement.classList.contains('dark') ? '🌙' : '☀️';
-  }
-  applyTheme(getPreferredTheme());
+ function getPreferredTheme() {
+ return localStorage.getItem('de-theme') || 'dark';
+ }
+ function applyTheme(theme) {
+ document.documentElement.classList.toggle('dark', theme === 'dark');
+ localStorage.setItem('de-theme', theme);
+ }
+ function toggleTheme() {
+ applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark');
+ // Update toggle icon in nav
+ var btn = document.getElementById('nav-theme-toggle');
+ if (btn) btn.textContent = document.documentElement.classList.contains('dark') ? '🌙' : '☀️';
+ }
+ applyTheme(getPreferredTheme());
 
-  // Render topic cards
-  var topics = [
-    { icon: '🔮', title: 'Clustering Showdown', desc: 'KMeans vs DBSCAN — interactive comparison with benchmarks, business analysis, and scaling tests.', href: 'clustering.html', status: 'live' },
-    { icon: '📊', title: 'Bins & Histograms', desc: 'Understanding data distribution through binning strategies. Bin width, density plots, and skewness detection.', href: 'bins.html', status: 'live', tech: [
-      { name: 'GitHub API', url: 'https://cdn.simpleicons.org/github/24292e' },
-      { name: 'Wikipedia', url: 'https://cdn.simpleicons.org/wikipedia/000000' },
-      { name: 'Hacker News', url: 'https://cdn.simpleicons.org/ycombinator/FF6600' },
-      { name: 'Open-Meteo', url: 'https://open-meteo.com/favicon-32x32.png' },
-    ]},
-    { icon: '🔥', title: 'Failure Detection', desc: 'From 47 alerts to 3 root causes. Interactive alert storm correlator — tune grouping rules and watch the noise collapse.', href: 'failure-detection.html', status: 'live' },
-    { icon: '📈', title: 'Regression Analysis', desc: 'From linear regression to real-world predictive modeling. When it works, when it fails, and how to interpret results.', href: 'regression.html', status: 'soon' },
-    { icon: '⚡', title: 'Spikes & Anomaly Detection', desc: 'Detecting unusual spikes in metrics, traffic, and system behavior with statistical methods.', href: 'spikes.html', status: 'soon' },
-    { icon: '📋', title: 'Log-Driven Development', desc: 'Using structured logging as a foundation for observability, debugging, and data pipelines.', href: 'log-driven.html', status: 'live' },
-    { icon: '📡', title: 'Bimodal Latency', desc: 'Real HTTP requests to a live CF Worker + Azure PostgreSQL + Redis. Watch cache-aside create two latency peaks your average metric hides.', href: 'bimodal.html', status: 'live', tech: [
-      { name: 'Cloudflare', url: 'https://cdn.simpleicons.org/cloudflare/F48120' },
-      { name: 'Azure PostgreSQL', url: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/azure/azure-original.svg' },
-      { name: 'Redis', url: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/redis/redis-original.svg' },
-    ]},
-  ];
+ // Render topic cards
+ var topics = [
+ { icon: '🔮', title: 'Clustering Showdown', desc: 'KMeans vs DBSCAN — interactive comparison with benchmarks, business analysis, and scaling tests.', href: 'clustering.html', status: 'live' },
+ { icon: '📊', title: 'Bins & Histograms', desc: 'Understanding data distribution through binning strategies. Bin width, density plots, and skewness detection.', href: 'bins.html', status: 'live', tech: [
+ { name: 'GitHub API', url: 'https://cdn.simpleicons.org/github/24292e' },
+ { name: 'Wikipedia', url: 'https://cdn.simpleicons.org/wikipedia/000000' },
+ { name: 'Hacker News', url: 'https://cdn.simpleicons.org/ycombinator/FF6600' },
+ { name: 'Open-Meteo', url: 'https://open-meteo.com/favicon-32x32.png' },
+ ]},
+ { icon: '🔥', title: 'Failure Detection', desc: 'From 47 alerts to 3 root causes. Interactive alert storm correlator — tune grouping rules and watch the noise collapse.', href: 'failure-detection.html', status: 'live' },
+ { icon: '📈', title: 'Regression Analysis', desc: 'From linear regression to real-world predictive modeling. When it works, when it fails, and how to interpret results.', href: 'regression.html', status: 'soon' },
+ { icon: '⚡', title: 'Spikes & Anomaly Detection', desc: 'Detecting unusual spikes in metrics, traffic, and system behavior with statistical methods.', href: 'spikes.html', status: 'soon' },
+ { icon: '📋', title: 'Log-Driven Development', desc: 'Using structured logging as a foundation for observability, debugging, and data pipelines.', href: 'log-driven.html', status: 'live' },
+ { icon: '📡', title: 'Bimodal Latency', desc: 'Real HTTP requests to a live CF Worker + Azure PostgreSQL + Redis. Watch cache-aside create two latency peaks your average metric hides.', href: 'bimodal.html', status: 'live', tech: [
+ { name: 'Cloudflare', url: 'https://cdn.simpleicons.org/cloudflare/F48120' },
+ { name: 'Azure PostgreSQL', url: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/azure/azure-original.svg' },
+ { name: 'Redis', url: 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/redis/redis-original.svg' },
+ ]},
+ ];
 
-  var grid = document.getElementById('topic-grid');
-  grid.innerHTML = topics.map(function(t) {
-    var badge = t.status === 'live'
-      ? '<span class="status-live">● Live</span>'
-      : '<span class="status-soon">🚧 Coming Soon</span>';
-    var techBadges = '';
-    if (t.tech && t.tech.length) {
-      techBadges = '<div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-700/50">' +
-        t.tech.map(function(tech) {
-          return '<span class="flex items-center justify-center bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-full p-1.5" title="' + tech.name + '">' +
-            '<img src="' + tech.url + '" width="16" height="16" alt="' + tech.name + '" title="' + tech.name + '" style="display:inline-block;vertical-align:middle" />' +
-          '</span>';
-        }).join('') +
-      '</div>';
-    }
-    return '<a class="card topic-card" href="' + t.href + '">' +
-      '<div class="flex items-center justify-between mb-3">' +
-        '<span class="text-3xl">' + t.icon + '</span>' +
-        badge +
-      '</div>' +
-      '<h2 class="text-lg font-bold mb-1.5 text-slate-200">' + t.title + '</h2>' +
-      '<p class="text-sm text-slate-400 leading-relaxed">' + t.desc + '</p>' +
-      techBadges +
-    '</a>';
-  }).join('');
+ var grid = document.getElementById('topic-grid');
+ grid.innerHTML = topics.map(function(t) {
+ var badge = t.status === 'live'
+ ? '<span class="status-live">● Live</span>'
+ : '<span class="status-soon">🚧 Coming Soon</span>';
+ var techBadges = '';
+ if (t.tech && t.tech.length) {
+ techBadges = '<div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-700/50">' +
+ t.tech.map(function(tech) {
+ return '<span class="flex items-center justify-center bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-full p-1.5" title="' + tech.name + '">' +
+ '<img src="' + tech.url + '" width="16" height="16" alt="' + tech.name + '" title="' + tech.name + '" style="display:inline-block;vertical-align:middle" />' +
+ '</span>';
+ }).join('') +
+ '</div>';
+ }
+ return '<a class="card topic-card" href="' + t.href + '">' +
+ '<div class="flex items-center justify-between mb-3">' +
+ '<span class="text-3xl">' + t.icon + '</span>' +
+ badge +
+ '</div>' +
+ '<h2 class="text-lg font-bold mb-1.5 text-slate-200">' + t.title + '</h2>' +
+ '<p class="text-sm text-slate-400 leading-relaxed">' + t.desc + '</p>' +
+ techBadges +
+ '</a>';
+ }).join('');
 </script>
 <script src="shared/nav.js"></script>
 </body>
