@@ -15,7 +15,7 @@
 <main class="max-w-7xl mx-auto px-4 py-8">
   <div class="card p-8 text-center">
     <div class="text-6xl mb-4">⚡</div>
-    <h1 class="text-3xl font-bold mb-3 text-black dark:text-white">Spikes &amp; Anomaly Detection</h1>
+    <h1 class="text-3xl font-bold mb-3 text-black">Spikes &amp; Anomaly Detection</h1>
     <p class="text-slate-400 max-w-2xl mx-auto mb-6">Detecting unusual spikes in metrics, traffic, and system behavior. Learn statistical methods for distinguishing real anomalies from normal variance.</p>
     <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 text-amber-400 text-sm font-medium">
       🚧 Coming Soon
@@ -34,7 +34,7 @@
 </main>
 
 <script>
-  function getPreferredTheme() { return localStorage.getItem('de-theme') || 'dark'; }
+  function getPreferredTheme() { return localStorage.getItem('de-theme') || 'light'; }
   function applyTheme(theme) { document.documentElement.classList.toggle('dark', theme === 'dark'); localStorage.setItem('de-theme', theme); }
   function toggleTheme() { applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark'); var btn = document.getElementById('nav-theme-toggle'); if (btn) btn.textContent = document.documentElement.classList.contains('dark') ? '🌙' : '☀️'; }
   applyTheme(getPreferredTheme());
