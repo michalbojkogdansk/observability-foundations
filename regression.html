@@ -89,7 +89,8 @@
     <div class="glass-card p-6 md:p-8">
       <h2 class="text-2xl font-bold mb-1">Scenario 1 — Latency Drift Detector</h2>
       <p class="text-sm mb-1 font-semibold" style="color:#6366f1">Linear Regression</p>
-      <p class="mb-4" style="color:#6b7280">Your API gateway p99 is slowly climbing. When does it cross the SLO?</p>
+      <p class="mb-1" style="color:#6b7280">Your API gateway p99 is slowly climbing. When does it cross the SLO?</p>
+      <p class="mb-4 text-sm" style="color:#9ca3af">Raw metric rows are stored in <strong style="color:#6366f1">Neon Postgres</strong> and fetched live on demand; the Cloudflare Worker sits at the edge — it proxies the request and serves a cached copy from <strong style="color:#6366f1">Upstash Redis</strong> for up to an hour so Neon is only hit once. The Worker forwards uncached requests to a <strong style="color:#6366f1">Python FastAPI service on Render.com</strong>, which runs the actual <code>scipy</code> OLS regression and returns coefficients, confidence bands, and the breach forecast.</p>
 
       <div class="flex flex-wrap items-end gap-4 mb-4">
         <div class="flex-1 min-w-[200px]">
