@@ -343,13 +343,13 @@ async function safeFetch(url) {
 }
 
 function fmtDate(iso) {
-  if (!iso) return '—';
+  if (!iso) return '\u2014';
   var d = new Date(iso);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function fmtNum(n, digits) {
-  if (n === null || n === undefined) return '—';
+  if (n === null || n === undefined) return '\u2014';
   return Number(n).toFixed(digits !== undefined ? digits : 2);
 }
 
@@ -367,8 +367,8 @@ async function loadLatencyData() {
 
 function renderLatencyScatter(data) {
   if (latencyChart) { latencyChart.destroy(); latencyChart = null; }
-  var points = (data.data || data.points || []).map(function(p) {
-    return { x: p.timestamp || p.date || p.x, y: p.latency_ms || p.value || p.y };
+  var points = (data.data || []).map(function(p) {
+    return { x: new Date(p.ts), y: p.p99_ms };
   });
   var ctx = document.getElementById('latency-chart').getContext('2d');
   latencyChart = new Chart(ctx, {
@@ -376,7 +376,7 @@ function renderLatencyScatter(data) {
     data: {
       datasets: [{
         label: 'p99 Latency (ms)',
-        data: points.map(function(p){ return { x: new Date(p.x), y: p.y }; }),
+        data: points,
         backgroundColor: 'rgba(99,102,241,0.4)',
         borderColor: '#6366f1',
         pointRadius: 3,
@@ -402,29 +402,34 @@ var runLatencyAnalysis = async function() {
     var res = await safeFetch(API_BASE + '/analyze/latency?slo_ms=' + slo);
     document.getElementById('latency-cache-info').innerHTML = cacheBadge(res);
 
-    var reg = res.regression || res;
-    var pred = res.prediction || res;
-    var rawData = res.data || res.points || [];
-    var fitted = res.fitted || res.fitted_line || [];
-    var ci_upper = res.ci_upper || res.confidence_upper || [];
-    var ci_lower = res.ci_lower || res.confidence_lower || [];
-    var residuals = res.residuals || [];
+    var reg = res.regression || {};
+    var pred = res.prediction || {};
+    var xDays = res.x_days || [];
+    var yValues = res.y_values || [];
+    var fitted = (reg.fitted) || [];
+    var baseTsStr = res.base_timestamp;
+    var baseTs = baseTsStr ? new Date(baseTsStr) : new Date();
 
     if (latencyChart) { latencyChart.destroy(); latencyChart = null; }
     var ctx = document.getElementById('latency-chart').getContext('2d');
 
-    var scatterPts = rawData.map(function(p) {
-      return { x: new Date(p.timestamp || p.date || p.x), y: p.latency_ms || p.value || p.y };
-    });
-    var fitPts = fitted.map(function(p) {
-      return { x: new Date(p.timestamp || p.date || p.x), y: p.latency_ms || p.value || p.y };
-    });
-    var ciUp = ci_upper.map(function(p) {
-      return { x: new Date(p.timestamp || p.date || p.x), y: p.latency_ms || p.value || p.y };
-    });
-    var ciLow = ci_lower.map(function(p) {
-      return { x: new Date(p.timestamp || p.date || p.x), y: p.latency_ms || p.value || p.y };
-    });
+    // Build scatter points from x_days + y_values
+    var scatterPts = [];
+    for (var i = 0; i < xDays.length && i < yValues.length; i++) {
+      scatterPts.push({ x: new Date(baseTs.getTime() + xDays[i] * 86400000), y: yValues[i] });
+    }
+
+    // Fitted line from x_days + regression.fitted
+    var fitPts = [];
+    for (var i = 0; i < xDays.length && i < fitted.length; i++) {
+      fitPts.push({ x: new Date(baseTs.getTime() + xDays[i] * 86400000), y: fitted[i] });
+    }
+
+    // Compute residuals
+    var residuals = [];
+    for (var i = 0; i < yValues.length && i < fitted.length; i++) {
+      residuals.push({ x: new Date(baseTs.getTime() + xDays[i] * 86400000), y: yValues[i] - fitted[i] });
+    }
 
     var datasets = [
       {
@@ -448,32 +453,10 @@ var runLatencyAnalysis = async function() {
       }
     ];
 
-    if (ciUp.length && ciLow.length) {
-      datasets.push({
-        label: '95% CI Upper',
-        data: ciUp,
-        borderColor: 'transparent',
-        backgroundColor: 'transparent',
-        pointRadius: 0,
-        type: 'line',
-        fill: false,
-        order: 1
-      });
-      datasets.push({
-        label: '95% CI Lower',
-        data: ciLow,
-        borderColor: 'transparent',
-        backgroundColor: 'rgba(245,158,11,0.1)',
-        pointRadius: 0,
-        type: 'line',
-        fill: '-1',
-        order: 1
-      });
-    }
-
     // SLO threshold line
     var minX = scatterPts.length ? scatterPts[0].x : new Date();
-    var maxX = fitPts.length ? fitPts[fitPts.length - 1].x : (scatterPts.length ? scatterPts[scatterPts.length-1].x : new Date());
+    var maxX = scatterPts.length ? scatterPts[scatterPts.length - 1].x : new Date();
+    if (fitPts.length) maxX = fitPts[fitPts.length - 1].x;
     datasets.push({
       label: 'SLO (' + slo + 'ms)',
       data: [{ x: minX, y: Number(slo) }, { x: maxX, y: Number(slo) }],
@@ -505,17 +488,14 @@ var runLatencyAnalysis = async function() {
       document.getElementById('latency-residuals-wrap').style.display = 'block';
       if (latencyResidualsChart) { latencyResidualsChart.destroy(); latencyResidualsChart = null; }
       var rCtx = document.getElementById('latency-residuals-chart').getContext('2d');
-      var rPts = residuals.map(function(p) {
-        return { x: new Date(p.timestamp || p.date || p.x), y: p.residual || p.value || p.y };
-      });
       latencyResidualsChart = new Chart(rCtx, {
         type: 'bar',
         data: {
-          labels: rPts.map(function(p){ return p.x; }),
+          labels: residuals.map(function(p){ return p.x; }),
           datasets: [{
             label: 'Residual (ms)',
-            data: rPts.map(function(p){ return p.y; }),
-            backgroundColor: rPts.map(function(p){ return p.y >= 0 ? 'rgba(99,102,241,0.5)' : 'rgba(239,68,68,0.5)'; })
+            data: residuals.map(function(p){ return p.y; }),
+            backgroundColor: residuals.map(function(p){ return p.y >= 0 ? 'rgba(99,102,241,0.5)' : 'rgba(239,68,68,0.5)'; })
           }]
         },
         options: {
@@ -530,23 +510,24 @@ var runLatencyAnalysis = async function() {
     }
 
     // Stats panel
+    var slope = reg.coefficients ? reg.coefficients[1] : null;
     var statsHtml = '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(reg.r_squared || reg.r2, 4) + '</div><div class="stat-label">R²</div></div>';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(reg.slope, 3) + '</div><div class="stat-label">Slope (ms/day)</div></div>';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(reg.std_error || reg.stderr, 4) + '</div><div class="stat-label">Std Error</div></div>';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(reg.p_value || reg.pvalue, 6) + '</div><div class="stat-label">p-value</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(reg.r_squared, 4) + '</div><div class="stat-label">R\u00b2</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(slope, 3) + '</div><div class="stat-label">Slope (ms/day)</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(reg.std_error, 4) + '</div><div class="stat-label">Std Error</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(reg.p_value, 6) + '</div><div class="stat-label">p-value</div></div>';
     statsHtml += '</div>';
     document.getElementById('latency-stats').innerHTML = statsHtml;
     document.getElementById('latency-stats').style.display = 'block';
 
     // Prediction card
-    var days = pred.days_until_breach || pred.breach_days;
+    var days = pred.days_remaining;
     var breachDate = pred.breach_date;
-    var current = pred.current_value || pred.current_ms;
+    var current = pred.current_p99;
     var predHtml = '<div class="prediction-card">';
-    predHtml += '<div class="font-bold text-lg mb-1">⚠️ SLO breach in <span style="color:#f59e0b">' + (days !== null && days !== undefined ? Math.round(days) + ' days' : 'N/A — within SLO') + '</span></div>';
+    predHtml += '<div class="font-bold text-lg mb-1">\u26a0\ufe0f SLO breach in <span style="color:#f59e0b">' + (days !== null && days !== undefined ? Math.round(Math.abs(days)) + ' days' + (days < 0 ? ' ago' : '') : 'N/A \u2014 within SLO') + '</span></div>';
     if (breachDate) predHtml += '<div class="text-sm mb-1">Predicted date: <strong>' + fmtDate(breachDate) + '</strong></div>';
-    if (current !== undefined) predHtml += '<div class="text-sm">Current p99: <strong>' + fmtNum(current, 1) + ' ms</strong> → Threshold: <strong>' + slo + ' ms</strong></div>';
+    if (current !== undefined) predHtml += '<div class="text-sm">Current p99: <strong>' + fmtNum(current, 1) + ' ms</strong> \u2192 Threshold: <strong>' + slo + ' ms</strong></div>';
     predHtml += '</div>';
     document.getElementById('latency-prediction').innerHTML = predHtml;
     document.getElementById('latency-prediction').style.display = 'block';
@@ -570,15 +551,15 @@ async function loadErrorsData() {
 
 function renderErrorsScatter(data) {
   if (errorsChart) { errorsChart.destroy(); errorsChart = null; }
-  var points = (data.data || data.points || []).map(function(p) {
-    return { x: new Date(p.timestamp || p.date || p.x), y: p.error_rate || p.value || p.y };
+  var points = (data.data || []).map(function(p) {
+    return { x: new Date(p.ts), y: p.error_rate };
   });
   var ctx = document.getElementById('errors-chart').getContext('2d');
   errorsChart = new Chart(ctx, {
     type: 'scatter',
     data: {
       datasets: [{
-        label: 'Error Rate (%)',
+        label: 'Error Rate',
         data: points,
         backgroundColor: 'rgba(99,102,241,0.4)',
         borderColor: '#6366f1',
@@ -604,28 +585,44 @@ var runErrorsAnalysis = async function() {
     var res = await safeFetch(API_BASE + '/analyze/errors?slo_target=' + sloTarget + '&budget_hours=720');
     document.getElementById('errors-cache-info').innerHTML = cacheBadge(res);
 
-    var reg = res.regression || res;
-    var pred = res.prediction || res;
-    var rawData = res.data || res.points || [];
-    var polyFit = res.polynomial_fit || res.fitted || res.fitted_line || [];
-    var linearFit = res.linear_fit || res.linear_comparison || [];
+    var budgetReg = res.budget_regression || {};
+    var linComp = res.linear_comparison || {};
+    var pred = res.prediction || {};
+    var xHours = res.x_hours || [];
+    var yBudget = res.y_budget || [];
+    var budgetFitted = budgetReg.fitted || [];
+    var baseTsStr = res.base_timestamp;
+    var baseTs = baseTsStr ? new Date(baseTsStr) : new Date();
 
     if (errorsChart) { errorsChart.destroy(); errorsChart = null; }
     var ctx = document.getElementById('errors-chart').getContext('2d');
 
-    var scatterPts = rawData.map(function(p) {
-      return { x: new Date(p.timestamp || p.date || p.x), y: p.error_rate || p.budget_remaining || p.value || p.y };
-    });
-    var polyPts = polyFit.map(function(p) {
-      return { x: new Date(p.timestamp || p.date || p.x), y: p.error_rate || p.budget_remaining || p.value || p.y };
-    });
-    var linPts = linearFit.map(function(p) {
-      return { x: new Date(p.timestamp || p.date || p.x), y: p.error_rate || p.budget_remaining || p.value || p.y };
-    });
+    // Build scatter points from x_hours + y_budget
+    var scatterPts = [];
+    for (var i = 0; i < xHours.length && i < yBudget.length; i++) {
+      scatterPts.push({ x: new Date(baseTs.getTime() + xHours[i] * 3600000), y: yBudget[i] });
+    }
+
+    // Polynomial fit from x_hours + budget_regression.fitted
+    var polyPts = [];
+    for (var i = 0; i < xHours.length && i < budgetFitted.length; i++) {
+      polyPts.push({ x: new Date(baseTs.getTime() + xHours[i] * 3600000), y: budgetFitted[i] });
+    }
+
+    // Linear comparison: simple line from first to last point
+    var linPts = [];
+    if (scatterPts.length >= 2) {
+      var firstY = yBudget[0];
+      var lastY = yBudget[yBudget.length - 1];
+      var firstX = scatterPts[0].x;
+      var lastX = scatterPts[scatterPts.length - 1].x;
+      linPts.push({ x: firstX, y: firstY });
+      linPts.push({ x: lastX, y: lastY });
+    }
 
     var datasets = [
       {
-        label: 'Observed',
+        label: 'Budget Remaining',
         data: scatterPts,
         backgroundColor: 'rgba(99,102,241,0.4)',
         borderColor: '#6366f1',
@@ -673,12 +670,12 @@ var runErrorsAnalysis = async function() {
     });
 
     // Stats
-    var polyR2 = reg.polynomial_r_squared || reg.poly_r2 || reg.r_squared || reg.r2;
-    var linR2 = reg.linear_r_squared || reg.linear_r2;
-    var coeffs = reg.coefficients || reg.poly_coefficients || [];
+    var polyR2 = budgetReg.r_squared;
+    var linR2 = linComp.r_squared;
+    var coeffs = budgetReg.coefficients || [];
     var statsHtml = '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(polyR2, 4) + '</div><div class="stat-label">Poly R²</div></div>';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(linR2, 4) + '</div><div class="stat-label">Linear R²</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(polyR2, 4) + '</div><div class="stat-label">Poly R\u00b2</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(linR2, 4) + '</div><div class="stat-label">Linear R\u00b2</div></div>';
     if (coeffs.length) {
       statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + coeffs.map(function(c){ return fmtNum(c,4); }).join(', ') + '</div><div class="stat-label">Poly Coefficients</div></div>';
     }
@@ -687,12 +684,15 @@ var runErrorsAnalysis = async function() {
     document.getElementById('errors-stats').style.display = 'block';
 
     // Prediction
-    var polyDays = pred.polynomial_days || pred.poly_days_until_exhaustion || pred.days_until_exhaustion;
-    var linDays = pred.linear_days || pred.lin_days_until_exhaustion;
+    var polyDays = pred.days_remaining;
+    var linDays = linComp.linear_exhaustion_days;
     var predHtml = '<div class="prediction-card">';
-    predHtml += '<div class="font-bold text-lg mb-1">🔥 Budget exhausted in <span style="color:#f59e0b">' + (polyDays != null ? Math.round(polyDays) + ' days' : 'N/A') + '</span> (polynomial)</div>';
+    predHtml += '<div class="font-bold text-lg mb-1">\ud83d\udd25 Budget exhausted in <span style="color:#f59e0b">' + (polyDays != null ? Math.round(polyDays) + ' days' : 'N/A') + '</span> (polynomial)</div>';
     if (linDays != null) {
-      predHtml += '<div class="text-sm mb-2">Linear model says: <strong>' + Math.round(linDays) + ' days</strong> — <span style="color:#ef4444">difference of ' + Math.abs(Math.round(linDays) - Math.round(polyDays)) + ' days!</span></div>';
+      predHtml += '<div class="text-sm mb-2">Linear model says: <strong>' + Math.round(linDays) + ' days</strong> \u2014 <span style="color:#ef4444">difference of ' + Math.abs(Math.round(linDays) - Math.round(polyDays)) + ' days!</span></div>';
+    }
+    if (pred.acceleration) {
+      predHtml += '<div class="text-sm mb-2" style="color:#f59e0b"><strong>' + pred.acceleration + '</strong></div>';
     }
     predHtml += '<div class="text-sm" style="color:#6b7280"><strong>Why polynomial matters:</strong> Error rates often accelerate under load. A linear model underestimates the burn rate, giving you a false sense of safety. The polynomial captures acceleration and gives a more realistic (and often shorter) runway.</div>';
     predHtml += '</div>';
@@ -718,8 +718,8 @@ async function loadCapacityData() {
 
 function renderCapacityScatter(data) {
   if (capacityChart) { capacityChart.destroy(); capacityChart = null; }
-  var points = (data.data || data.points || []).map(function(p) {
-    return { x: new Date(p.timestamp || p.date || p.x), y: p.disk_gb || p.value || p.y };
+  var points = (data.data || []).map(function(p) {
+    return { x: new Date(p.ts), y: p.used_gb };
   });
   var ctx = document.getElementById('capacity-chart').getContext('2d');
   capacityChart = new Chart(ctx, {
@@ -753,27 +753,40 @@ var runCapacityAnalysis = async function() {
     var res = await safeFetch(API_BASE + '/analyze/capacity?threshold_gb=' + limit + '&alert_pct=' + alertPct);
     document.getElementById('capacity-cache-info').innerHTML = cacheBadge(res);
 
-    var reg = res.regression || res;
-    var pred = res.prediction || res;
-    var rawData = res.data || res.points || [];
-    var expFit = res.exponential_fit || res.fitted || res.fitted_line || [];
-    var linearFit = res.linear_fit || res.linear_comparison || [];
+    var expReg = res.exponential_regression || {};
+    var linReg = res.linear_regression || {};
+    var pred = res.prediction || {};
+    var xDays = res.x_days || [];
+    var yValues = res.y_values || [];
+    var expFitted = expReg.fitted || [];
+    var linFitted = linReg.fitted || [];
+    var baseTsStr = res.base_timestamp;
+    var baseTs = baseTsStr ? new Date(baseTsStr) : new Date();
 
     if (capacityChart) { capacityChart.destroy(); capacityChart = null; }
     var ctx = document.getElementById('capacity-chart').getContext('2d');
 
-    var scatterPts = rawData.map(function(p) {
-      return { x: new Date(p.timestamp || p.date || p.x), y: p.disk_gb || p.value || p.y };
-    });
-    var expPts = expFit.map(function(p) {
-      return { x: new Date(p.timestamp || p.date || p.x), y: p.disk_gb || p.value || p.y };
-    });
-    var linPts = linearFit.map(function(p) {
-      return { x: new Date(p.timestamp || p.date || p.x), y: p.disk_gb || p.value || p.y };
-    });
+    // Build scatter points from x_days + y_values
+    var scatterPts = [];
+    for (var i = 0; i < xDays.length && i < yValues.length; i++) {
+      scatterPts.push({ x: new Date(baseTs.getTime() + xDays[i] * 86400000), y: yValues[i] });
+    }
 
-    var maxX = expPts.length ? expPts[expPts.length - 1].x : (scatterPts.length ? scatterPts[scatterPts.length-1].x : new Date());
+    // Exponential fit
+    var expPts = [];
+    for (var i = 0; i < xDays.length && i < expFitted.length; i++) {
+      expPts.push({ x: new Date(baseTs.getTime() + xDays[i] * 86400000), y: expFitted[i] });
+    }
+
+    // Linear fit
+    var linPts = [];
+    for (var i = 0; i < xDays.length && i < linFitted.length; i++) {
+      linPts.push({ x: new Date(baseTs.getTime() + xDays[i] * 86400000), y: linFitted[i] });
+    }
+
     var minX = scatterPts.length ? scatterPts[0].x : new Date();
+    var maxX = scatterPts.length ? scatterPts[scatterPts.length - 1].x : new Date();
+    if (expPts.length && expPts[expPts.length - 1].x > maxX) maxX = expPts[expPts.length - 1].x;
     var alertLine = Number(limit) * Number(alertPct) / 100;
 
     var datasets = [
@@ -852,36 +865,36 @@ var runCapacityAnalysis = async function() {
     });
 
     // Stats
-    var growthRate = reg.growth_rate || reg.rate_per_day;
-    var doublingTime = reg.doubling_time || reg.doubling_days;
-    var r2 = reg.r_squared || reg.r2;
-    var paramErrors = reg.parameter_errors || reg.param_stderr || {};
+    var growthRate = pred.daily_growth_rate_pct;
+    var doublingTime = pred.doubling_time_days;
+    var r2 = expReg.r_squared;
+    var paramErrors = expReg.param_errors || [];
 
     var statsHtml = '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(r2, 4) + '</div><div class="stat-label">R²</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(r2, 4) + '</div><div class="stat-label">R\u00b2</div></div>';
     statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(growthRate, 3) + '%</div><div class="stat-label">Growth Rate (/day)</div></div>';
     statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(doublingTime, 1) + '</div><div class="stat-label">Doubling Time (days)</div></div>';
-    if (paramErrors.a !== undefined || paramErrors.b !== undefined) {
-      statsHtml += '<div class="glass-card stat-item"><div class="stat-value">±' + fmtNum(paramErrors.a || paramErrors.amplitude, 3) + ' / ±' + fmtNum(paramErrors.b || paramErrors.rate, 6) + '</div><div class="stat-label">Param Errors (a / b)</div></div>';
+    if (paramErrors.length >= 2) {
+      statsHtml += '<div class="glass-card stat-item"><div class="stat-value">\u00b1' + fmtNum(paramErrors[0], 3) + ' / \u00b1' + fmtNum(paramErrors[1], 6) + '</div><div class="stat-label">Param Errors (a / b)</div></div>';
     }
     statsHtml += '</div>';
     document.getElementById('capacity-stats').innerHTML = statsHtml;
     document.getElementById('capacity-stats').style.display = 'block';
 
     // Prediction
-    var expDays = pred.exponential_days || pred.exp_days_until_full || pred.days_until_full;
-    var linDays = pred.linear_days || pred.lin_days_until_full;
-    var alertDays = pred.days_until_alert || pred.alert_days;
+    var expDays = pred.days_remaining;
+    var linVsExpDays = pred.linear_vs_exp_days;
+    var alertDays = pred.days_to_alert;
 
     var predHtml = '<div class="prediction-card">';
-    predHtml += '<div class="font-bold text-lg mb-1">💾 Full in <span style="color:#f59e0b">' + (expDays != null ? Math.round(expDays) + ' days' : 'N/A') + '</span> (exponential)</div>';
-    if (linDays != null) {
-      predHtml += '<div class="text-sm mb-1">Linear model says: <strong>' + Math.round(linDays) + ' days</strong> — <span style="color:#ef4444">overestimates by ' + Math.abs(Math.round(linDays) - Math.round(expDays)) + ' days!</span></div>';
+    predHtml += '<div class="font-bold text-lg mb-1">\ud83d\udcbe Full in <span style="color:#f59e0b">' + (expDays != null ? Math.round(expDays) + ' days' : 'N/A') + '</span> (exponential)</div>';
+    if (linVsExpDays != null) {
+      predHtml += '<div class="text-sm mb-1">Linear model overestimates by: <strong>' + Math.round(linVsExpDays) + ' days</strong> <span style="color:#ef4444">\u2014 dangerous!</span></div>';
     }
     if (alertDays != null) {
-      predHtml += '<div class="text-sm mt-2 font-semibold" style="color:#f97316">🚨 Alert threshold (' + alertPct + '%) hit in ~' + Math.round(alertDays) + ' days</div>';
+      predHtml += '<div class="text-sm mt-2 font-semibold" style="color:#f97316">\ud83d\udea8 Alert threshold (' + alertPct + '%) hit in ~' + Math.round(alertDays) + ' days</div>';
     }
-    predHtml += '<div class="text-sm mt-2" style="color:#6b7280"><strong>Why exponential matters:</strong> Storage growth compounds — user data, logs, and indices grow faster over time. A linear model gives dangerous false confidence about remaining runway.</div>';
+    predHtml += '<div class="text-sm mt-2" style="color:#6b7280"><strong>Why exponential matters:</strong> Storage growth compounds \u2014 user data, logs, and indices grow faster over time. A linear model gives dangerous false confidence about remaining runway.</div>';
     predHtml += '</div>';
     document.getElementById('capacity-prediction').innerHTML = predHtml;
     document.getElementById('capacity-prediction').style.display = 'block';
@@ -897,12 +910,11 @@ async function loadBranchInfo() {
   try {
     var data = await safeFetch(API_BASE + '/branch-info');
     var info = data.description || data.message || data.text || JSON.stringify(data, null, 2);
-    var features = data.features || data.capabilities || [];
     var html = '<p class="mb-3" style="color:#6b7280">' + (typeof info === 'string' ? info : 'Neon database branching enables instant, copy-on-write forks of your production database.') + '</p>';
     html += '<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">';
-    html += '<div class="glass-card p-4 text-center"><div class="text-2xl mb-1">🔀</div><div class="font-semibold">Fork Production</div><p class="text-xs mt-1" style="color:#6b7280">Create an instant branch of your database with all current data — zero downtime, zero copying.</p></div>';
-    html += '<div class="glass-card p-4 text-center"><div class="text-2xl mb-1">🧪</div><div class="font-semibold">Inject Simulated Data</div><p class="text-xs mt-1" style="color:#6b7280">Add synthetic spikes, outages, or growth scenarios to the branch without touching production.</p></div>';
-    html += '<div class="glass-card p-4 text-center"><div class="text-2xl mb-1">📊</div><div class="font-semibold">Compare Regressions</div><p class="text-xs mt-1" style="color:#6b7280">Run the same regression against both branches — see how projected dates shift under different scenarios.</p></div>';
+    html += '<div class="glass-card p-4 text-center"><div class="text-2xl mb-1">\ud83d\udd00</div><div class="font-semibold">Fork Production</div><p class="text-xs mt-1" style="color:#6b7280">Create an instant branch of your database with all current data \u2014 zero downtime, zero copying.</p></div>';
+    html += '<div class="glass-card p-4 text-center"><div class="text-2xl mb-1">\ud83e\uddea</div><div class="font-semibold">Inject Simulated Data</div><p class="text-xs mt-1" style="color:#6b7280">Add synthetic spikes, outages, or growth scenarios to the branch without touching production.</p></div>';
+    html += '<div class="glass-card p-4 text-center"><div class="text-2xl mb-1">\ud83d\udcca</div><div class="font-semibold">Compare Regressions</div><p class="text-xs mt-1" style="color:#6b7280">Run the same regression against both branches \u2014 see how projected dates shift under different scenarios.</p></div>';
     html += '</div>';
     document.getElementById('neon-branch-content').innerHTML = html;
   } catch(e) {
