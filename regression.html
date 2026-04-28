@@ -8,6 +8,10 @@
 <script>
   (function(){var t=localStorage.getItem('de-theme');if(!t)t='light';document.documentElement.classList.toggle('dark',t==='dark')})();
 </script>
+<link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config = { darkMode: 'class' }</script>
+<link rel="stylesheet" href="shared/style.css" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
   .scenario-spinner{display:none;width:1.25rem;height:1.25rem;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-left:.5rem}
@@ -97,7 +101,7 @@
           </div>
         </div>
         <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-6 rounded-lg transition" onclick="runLatencyAnalysis()">
-          Run Analysis<span class="scenario-spinner" id="latency-spinner"></span>
+          ▶ Run Analysis<span class="scenario-spinner" id="latency-spinner"></span>
         </button>
       </div>
 
@@ -128,7 +132,7 @@
           </select>
         </div>
         <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-6 rounded-lg transition" onclick="runErrorsAnalysis()">
-          Run Analysis<span class="scenario-spinner" id="errors-spinner"></span>
+          ▶ Run Analysis<span class="scenario-spinner" id="errors-spinner"></span>
         </button>
       </div>
 
@@ -164,7 +168,7 @@
           </div>
         </div>
         <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-6 rounded-lg transition" onclick="runCapacityAnalysis()">
-          Run Analysis<span class="scenario-spinner" id="capacity-spinner"></span>
+          ▶ Run Analysis<span class="scenario-spinner" id="capacity-spinner"></span>
         </button>
       </div>
 
