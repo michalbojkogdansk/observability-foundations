@@ -22,7 +22,12 @@
   .dark .stat-label{color:#9ca3af}
   .prediction-card{border-left:4px solid #f59e0b;padding:1rem 1.25rem;border-radius:.5rem;background:rgba(245,158,11,.08)}
   .dark .prediction-card{background:rgba(245,158,11,.12)}
-  .residuals-chart-container{height:120px;margin-top:1rem}
+  .residuals-chart-container{height:120px;margin-top:1rem;overflow:hidden;min-width:0}
+  .stat-item{text-align:center;padding:1.25rem 1rem;cursor:default;position:relative}
+  .stat-item .stat-value{font-size:1.75rem;font-weight:700;color:#6366f1}
+  .stat-item .stat-label{font-size:.75rem;color:#6b7280;margin-top:.25rem}
+  .stat-item .stat-desc{font-size:.7rem;color:#9ca3af;margin-top:.35rem;line-height:1.4;max-width:160px;margin-left:auto;margin-right:auto}
+  .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem;margin-top:1rem}
   .slider-container{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
   .slider-container input[type=range]{flex:1;min-width:160px}
   .slider-val{font-weight:700;min-width:60px;text-align:right;color:#6366f1}
@@ -43,7 +48,7 @@
   .reading-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;margin-top:1rem}
   .reading-card{transition:transform .15s}
   .reading-card:hover{transform:translateY(-2px)}
-  .chart-container{position:relative;height:320px}
+  .chart-container{position:relative;height:320px;overflow:hidden;min-width:0}
 </style>
 </head>
 <body class="min-h-screen">
@@ -98,7 +103,7 @@
 
       <div id="latency-cache-info"></div>
       <div class="chart-container"><canvas id="latency-chart"></canvas></div>
-      <div class="residuals-chart-container" style="display:none" id="latency-residuals-wrap"><canvas id="latency-residuals-chart"></canvas></div>
+      <div id="latency-residuals-wrap" style="display:none"><p class="text-xs text-gray-500 dark:text-gray-400 mt-4 mb-1"><strong>Residuals</strong> — how far each real measurement sits above (+) or below (−) the regression line. Random scatter = good model fit; a curve here would signal the wrong model type.</p><div class="residuals-chart-container"><canvas id="latency-residuals-chart"></canvas></div></div>
 
       <div id="latency-stats" class="mt-4" style="display:none"></div>
       <div id="latency-prediction" class="mt-4" style="display:none"></div>
@@ -511,11 +516,11 @@ var runLatencyAnalysis = async function() {
 
     // Stats panel
     var slope = reg.coefficients ? reg.coefficients[1] : null;
-    var statsHtml = '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(reg.r_squared, 4) + '</div><div class="stat-label">R\u00b2</div></div>';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(slope, 3) + '</div><div class="stat-label">Slope (ms/day)</div></div>';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(reg.std_error, 4) + '</div><div class="stat-label">Std Error</div></div>';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(reg.p_value, 6) + '</div><div class="stat-label">p-value</div></div>';
+    var statsHtml = '<div class="stats-grid">';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(reg.r_squared, 4) + '</div><div class="stat-label">R\u00b2</div><div class="stat-desc">How much of p99\u2019s variation the line explains. &gt;0.95 = very strong trend.</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(slope, 3) + '</div><div class="stat-label">Slope (ms/day)</div><div class="stat-desc">p99 grows by this many ms every day. \u00d730 = your monthly drift.</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(reg.std_error, 4) + '</div><div class="stat-label">Std Error</div><div class="stat-desc">Uncertainty on the slope. Low = the trend is precise, not a noisy estimate.</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(reg.p_value, 6) + '</div><div class="stat-label">p-value</div><div class="stat-desc">Probability this trend is random chance. \u22480.000 = statistically certain degradation.</div></div>';
     statsHtml += '</div>';
     document.getElementById('latency-stats').innerHTML = statsHtml;
     document.getElementById('latency-stats').style.display = 'block';
@@ -673,11 +678,11 @@ var runErrorsAnalysis = async function() {
     var polyR2 = budgetReg.r_squared;
     var linR2 = linComp.r_squared;
     var coeffs = budgetReg.coefficients || [];
-    var statsHtml = '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(polyR2, 4) + '</div><div class="stat-label">Poly R\u00b2</div></div>';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(linR2, 4) + '</div><div class="stat-label">Linear R\u00b2</div></div>';
+    var statsHtml = '<div class="stats-grid">';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(polyR2, 4) + '</div><div class="stat-label">Poly R\u00b2</div><div class="stat-desc">Curve model fit. Higher than Linear R\u00b2 = acceleration is real, not noise.</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(linR2, 4) + '</div><div class="stat-label">Linear R\u00b2</div><div class="stat-desc">Straight-line fit. If much lower than Poly, the error rate is accelerating.</div></div>';
     if (coeffs.length) {
-      statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + coeffs.map(function(c){ return fmtNum(c,4); }).join(', ') + '</div><div class="stat-label">Poly Coefficients</div></div>';
+      statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + coeffs.map(function(c){ return fmtNum(c,4); }).join(', ') + '</div><div class="stat-label">Poly Coefficients</div><div class="stat-desc">a², a¹, a⁰ of the fitted curve. Positive quadratic term = upward acceleration.</div></div>';
     }
     statsHtml += '</div>';
     document.getElementById('errors-stats').innerHTML = statsHtml;
@@ -870,12 +875,12 @@ var runCapacityAnalysis = async function() {
     var r2 = expReg.r_squared;
     var paramErrors = expReg.param_errors || [];
 
-    var statsHtml = '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(r2, 4) + '</div><div class="stat-label">R\u00b2</div></div>';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(growthRate, 3) + '%</div><div class="stat-label">Growth Rate (/day)</div></div>';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(doublingTime, 1) + '</div><div class="stat-label">Doubling Time (days)</div></div>';
+    var statsHtml = '<div class="stats-grid">';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(r2, 4) + '</div><div class="stat-label">R\u00b2</div><div class="stat-desc">Exponential curve fit quality. &gt;0.95 = genuine compounding growth, not noise.</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(growthRate, 3) + '%</div><div class="stat-label">Growth Rate (/day)</div><div class="stat-desc">Percentage storage increase per day. Compounds \u2014 small rates fill disks fast.</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(doublingTime, 1) + '</div><div class="stat-label">Doubling Time (days)</div><div class="stat-desc">Days until current usage doubles. Rule of 72: 72 \u00f7 daily% gives this number.</div></div>';
     if (paramErrors.length >= 2) {
-      statsHtml += '<div class="glass-card stat-item"><div class="stat-value">\u00b1' + fmtNum(paramErrors[0], 3) + ' / \u00b1' + fmtNum(paramErrors[1], 6) + '</div><div class="stat-label">Param Errors (a / b)</div></div>';
+      statsHtml += '<div class="glass-card stat-item"><div class="stat-value">\u00b1' + fmtNum(paramErrors[0], 3) + ' / \u00b1' + fmtNum(paramErrors[1], 6) + '</div><div class="stat-label">Param Errors (a / b)</div><div class="stat-desc">Confidence bounds on curve shape \u2014 lower = tighter, more reliable prediction.</div></div>';
     }
     statsHtml += '</div>';
     document.getElementById('capacity-stats').innerHTML = statsHtml;
