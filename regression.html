@@ -30,7 +30,7 @@
   .stat-item{text-align:center;padding:1.25rem 1rem;cursor:default;position:relative}
   .stat-item .stat-value{font-size:1.75rem;font-weight:700;color:#6366f1}
   .stat-item .stat-label{font-size:.75rem;color:#6b7280;margin-top:.25rem}
-  .stat-item .stat-desc{font-size:.7rem;color:#9ca3af;margin-top:.35rem;line-height:1.4;max-width:160px;margin-left:auto;margin-right:auto}
+  .stat-item .stat-desc{font-size:.7rem;color:#9ca3af;margin-top:.35rem;line-height:1.4;max-width:220px;margin-left:auto;margin-right:auto}
   .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem;margin-top:1rem}
   .slider-container{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
   .slider-container input[type=range]{flex:1;min-width:160px}
@@ -64,18 +64,17 @@
     <p class="text-lg md:text-xl max-w-3xl mx-auto mb-6" style="color:#4b5563">
       Linear, polynomial, and exponential regression on real production metrics — powered by Python/scipy on Render.com, Neon Postgres, Cloudflare Workers, and Redis caching.
     </p>
-    <div class="arch-flow">
+    <div class="arch-flow" style="flex-wrap:wrap;gap:8px;align-items:center;">
       <span class="arch-badge arch-badge-gray">GitHub Pages</span>
       <span class="arch-arrow">→</span>
-      <span class="arch-badge arch-badge-indigo">Cloudflare Worker</span>
+      <span style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;">
+        <span class="arch-badge arch-badge-indigo" style="font-size:.7rem;padding:2px 8px;opacity:.8;">⇅ Redis Cache</span>
+        <span class="arch-badge arch-badge-indigo">Cloudflare Worker</span>
+      </span>
       <span class="arch-arrow">→</span>
       <span class="arch-badge arch-badge-indigo">Render.com (Python/scipy)</span>
       <span class="arch-arrow">→</span>
       <span class="arch-badge arch-badge-indigo">Neon Postgres</span>
-      <div class="arch-side">
-        <span class="arch-arrow">↕</span>
-        <span class="arch-badge arch-badge-indigo">Redis</span>
-      </div>
     </div>
     <div class="mt-6">
       <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700"><span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Live</span>
