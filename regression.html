@@ -440,6 +440,19 @@ var runLatencyAnalysis = async function() {
       residuals.push({ x: new Date(baseTs.getTime() + xDays[i] * 86400000), y: yValues[i] - fitted[i] });
     }
 
+    // Confidence band from coefficient CIs: [[a_low,a_hi],[b_low,b_hi]]
+    var ci = (reg.confidence_intervals) || null;
+    var upperPts = [], lowerPts = [];
+    if (ci && ci.length >= 2) {
+      var aLo = ci[0][0], aHi = ci[0][1];
+      var bLo = ci[1][0], bHi = ci[1][1];
+      for (var i = 0; i < xDays.length; i++) {
+        var t = new Date(baseTs.getTime() + xDays[i] * 86400000);
+        upperPts.push({ x: t, y: aHi + bHi * xDays[i] });
+        lowerPts.push({ x: t, y: aLo + bLo * xDays[i] });
+      }
+    }
+
     var datasets = [
       {
         label: 'p99 Latency',
@@ -448,9 +461,37 @@ var runLatencyAnalysis = async function() {
         borderColor: '#6366f1',
         pointRadius: 3,
         type: 'scatter',
-        order: 3
-      },
-      {
+        order: 4
+      }
+    ];
+
+    // Confidence band (upper fills down to lower)
+    if (upperPts.length) {
+      datasets.push({
+        label: 'Confidence Band',
+        data: upperPts,
+        borderColor: 'transparent',
+        backgroundColor: 'rgba(245,158,11,0.15)',
+        borderWidth: 0,
+        pointRadius: 0,
+        type: 'line',
+        fill: '+1',
+        order: 1
+      });
+      datasets.push({
+        label: '_conf_lower',
+        data: lowerPts,
+        borderColor: 'transparent',
+        backgroundColor: 'transparent',
+        borderWidth: 0,
+        pointRadius: 0,
+        type: 'line',
+        fill: false,
+        order: 1
+      });
+    }
+
+    datasets.push({
         label: 'Linear Fit',
         data: fitPts,
         borderColor: '#f59e0b',
@@ -459,8 +500,7 @@ var runLatencyAnalysis = async function() {
         pointRadius: 0,
         type: 'line',
         order: 2
-      }
-    ];
+      });
 
     // SLO threshold line
     var minX = scatterPts.length ? scatterPts[0].x : new Date();
@@ -488,7 +528,7 @@ var runLatencyAnalysis = async function() {
           x: { type: 'time', time: { unit: 'week' }, grid: { color: gridColor() }, ticks: { color: textColor() } },
           y: { title: { display: true, text: 'ms', color: textColor() }, grid: { color: gridColor() }, ticks: { color: textColor() } }
         },
-        plugins: { legend: { labels: { color: textColor() } } }
+        plugins: { legend: { labels: { color: textColor(), filter: function(item) { return item.text && item.text.charAt(0) !== '_'; } } } }
       }
     });
 
