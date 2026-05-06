@@ -570,8 +570,8 @@ var runLatencyAnalysis = async function() {
     document.getElementById('latency-stats').style.display = 'block';
 
     // Prediction card
-    var days = pred.days_remaining;
     var breachDate = pred.breach_date;
+    var days = breachDate ? (new Date(breachDate) - new Date()) / 86400000 : pred.days_remaining;
     var current = pred.current_p99;
     var predHtml = '<div class="prediction-card">';
     predHtml += '<div class="font-bold text-lg mb-1">\u26a0\ufe0f SLO breach in <span style="color:#f59e0b">' + (days !== null && days !== undefined ? Math.round(Math.abs(days)) + ' days' + (days < 0 ? ' ago' : '') : 'N/A \u2014 within SLO') + '</span></div>';
@@ -733,7 +733,8 @@ var runErrorsAnalysis = async function() {
     document.getElementById('errors-stats').style.display = 'block';
 
     // Prediction
-    var polyDays = pred.days_remaining;
+    var polyBreachDate = pred.breach_date;
+    var polyDays = polyBreachDate ? (new Date(polyBreachDate) - new Date()) / 86400000 : pred.days_remaining;
     var linDays = linComp.linear_exhaustion_days;
     var predHtml = '<div class="prediction-card">';
     predHtml += '<div class="font-bold text-lg mb-1">\ud83d\udd25 Budget exhausted in <span style="color:#f59e0b">' + (polyDays != null ? Math.round(polyDays) + ' days' : 'N/A') + '</span> (polynomial)</div>';
@@ -931,7 +932,8 @@ var runCapacityAnalysis = async function() {
     document.getElementById('capacity-stats').style.display = 'block';
 
     // Prediction
-    var expDays = pred.days_remaining;
+    var expBreachDate = pred.breach_date;
+    var expDays = expBreachDate ? (new Date(expBreachDate) - new Date()) / 86400000 : pred.days_remaining;
     var linVsExpDays = pred.linear_vs_exp_days;
     var alertDays = pred.days_to_alert;
 
