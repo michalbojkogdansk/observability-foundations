@@ -572,11 +572,27 @@ var runLatencyAnalysis = async function() {
     // Prediction card
     var breachDate = pred.breach_date;
     var days = breachDate ? (new Date(breachDate) - new Date()) / 86400000 : pred.days_remaining;
-    var current = pred.current_p99;
-    var predHtml = '<div class="prediction-card">';
-    predHtml += '<div class="font-bold text-lg mb-1">\u26a0\ufe0f SLO breach in <span style="color:#f59e0b">' + (days !== null && days !== undefined ? Math.round(Math.abs(days)) + ' days' + (days < 0 ? ' ago' : '') : 'N/A \u2014 within SLO') + '</span></div>';
-    if (breachDate) predHtml += '<div class="text-sm mb-1">Predicted date: <strong>' + fmtDate(breachDate) + '</strong></div>';
-    if (current !== undefined) predHtml += '<div class="text-sm">Current p99: <strong>' + fmtNum(current, 1) + ' ms</strong> \u2192 Threshold: <strong>' + slo + ' ms</strong></div>';
+
+    // Find today's actual p99 from the scatter data (nearest point to now)
+    var todayOffset = (new Date() - baseTs) / 86400000;
+    var closestIdx = 0, minDiff = Infinity;
+    for (var ci2 = 0; ci2 < xDays.length; ci2++) {
+      var diff = Math.abs(xDays[ci2] - todayOffset);
+      if (diff < minDiff) { minDiff = diff; closestIdx = ci2; }
+    }
+    var current = (xDays.length && yValues.length) ? yValues[closestIdx] : pred.current_p99;
+
+    var alreadyBreached = (days !== null && days !== undefined && days < 0) || (current !== undefined && Number(current) > Number(slo));
+    var predHtml = '<div class="prediction-card" style="' + (alreadyBreached ? 'border-left-color:#ef4444;background:rgba(239,68,68,0.08)' : '') + '">';
+    if (alreadyBreached) {
+      predHtml += '<div class="font-bold text-lg mb-1" style="color:#ef4444">\u274c SLO Already Breached</div>';
+      if (days !== null && days !== undefined && days < 0)
+        predHtml += '<div class="text-sm mb-1">Regression line crossed threshold <strong>' + Math.round(Math.abs(days)) + ' days ago</strong> (based on trend, not a single spike)</div>';
+    } else {
+      predHtml += '<div class="font-bold text-lg mb-1">\u26a0\ufe0f SLO breach in <span style="color:#f59e0b">' + (days !== null && days !== undefined ? Math.round(days) + ' days' : 'N/A \u2014 within SLO') + '</span></div>';
+      if (breachDate) predHtml += '<div class="text-sm mb-1">Predicted date: <strong>' + fmtDate(breachDate) + '</strong></div>';
+    }
+    if (current !== undefined) predHtml += '<div class="text-sm">Today\'s p99: <strong>' + fmtNum(current, 1) + ' ms</strong> \u2192 SLO threshold: <strong>' + slo + ' ms</strong></div>';
     predHtml += '</div>';
     document.getElementById('latency-prediction').innerHTML = predHtml;
     document.getElementById('latency-prediction').style.display = 'block';
