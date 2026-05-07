@@ -820,7 +820,17 @@ var runErrorsAnalysis = async function() {
 
     // Stats
     var polyR2 = errReg.r_squared;
-    var linR2 = linComp.r_squared;
+    // Compute linear R² from scatter budget points (no server linComp needed)
+    var linR2 = null;
+    if (scatterPts.length >= 2) {
+      var yMeanL = scatterPts.reduce(function(s,p){return s+p.y;},0)/scatterPts.length;
+      var ssTot = scatterPts.reduce(function(s,p){return s+Math.pow(p.y-yMeanL,2);},0);
+      var fBP = scatterPts[0], lBP = scatterPts[scatterPts.length-1];
+      var linSlopeL = (lBP.y-fBP.y)/(lBP.x.getTime()-fBP.x.getTime());
+      var linIntL = fBP.y - linSlopeL*fBP.x.getTime();
+      var ssRes = scatterPts.reduce(function(s,p){var yh=linSlopeL*p.x.getTime()+linIntL;return s+Math.pow(p.y-yh,2);},0);
+      linR2 = ssTot > 0 ? 1 - ssRes/ssTot : 0;
+    }
     var coeffs = errReg.coefficients || [];
     var statsHtml = '<div class="stats-grid">';
     statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(polyR2, 4) + '</div><div class="stat-label">Poly R\u00b2</div><div class="stat-desc">Curve model fit. Higher than Linear R\u00b2 = acceleration is real, not noise.</div></div>';
