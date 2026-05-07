@@ -970,53 +970,99 @@ var runCapacityAnalysis = async function() {
     var pred = res.prediction || {};
     var xDays = res.x_days || [];
     var yValues = res.y_values || [];
-    var expFitted = expReg.fitted || [];
-    var linFitted = linReg.fitted || [];
     var baseTsStr = res.base_timestamp;
     var baseTs = baseTsStr ? new Date(baseTsStr) : new Date();
+    var todayNow = new Date();
 
-    if (capacityChart) { capacityChart.destroy(); capacityChart = null; }
-    var ctx = document.getElementById('capacity-chart').getContext('2d');
+    // Exponential coefficients: y = A * exp(b * x)  where x = days from base
+    var expCoeffs = expReg.coefficients || [];
+    var expA = expCoeffs[0] || 1;
+    var expB = expCoeffs[1] || 0;
 
-    // Build scatter points from x_days + y_values
+    // Linear coefficients: y = intercept + slope * x
+    var linCoeffsArr = linReg.coefficients || [];
+    var linIntercept = linCoeffsArr[0] || 0;
+    var linSlope = linCoeffsArr[1] || 0;
+
+    var limitNum = Number(limit);
+    // Days from base until each model hits the limit
+    var expBreachDays = expB > 0 ? Math.log(limitNum / expA) / expB : null;
+    var linBreachDays = linSlope > 0 ? (limitNum - linIntercept) / linSlope : null;
+
+    // Chart X max = exponential breach + 5 days padding
+    var chartEndDays = expBreachDays ? expBreachDays + 5 : (xDays[xDays.length-1] || 42) + 5;
+    var chartEndDate = new Date(baseTs.getTime() + chartEndDays * 86400000);
+
+    // Scatter (real measured data)
     var scatterPts = [];
     for (var i = 0; i < xDays.length && i < yValues.length; i++) {
       scatterPts.push({ x: new Date(baseTs.getTime() + xDays[i] * 86400000), y: yValues[i] });
     }
 
-    // Exponential fit
+    // Exponential curve: data range + full extrapolation to breach
     var expPts = [];
-    for (var i = 0; i < xDays.length && i < expFitted.length; i++) {
-      expPts.push({ x: new Date(baseTs.getTime() + xDays[i] * 86400000), y: expFitted[i] });
+    for (var d = 0; d <= chartEndDays; d += 0.5) {
+      expPts.push({ x: new Date(baseTs.getTime() + d * 86400000), y: expA * Math.exp(expB * d) });
     }
 
-    // Linear fit
+    // Linear curve extended to chart end (for comparison — stays below limit longer)
     var linPts = [];
-    for (var i = 0; i < xDays.length && i < linFitted.length; i++) {
-      linPts.push({ x: new Date(baseTs.getTime() + xDays[i] * 86400000), y: linFitted[i] });
+    for (var d = 0; d <= chartEndDays; d += 0.5) {
+      var lv = linIntercept + linSlope * d;
+      if (lv <= limitNum * 1.02) linPts.push({ x: new Date(baseTs.getTime() + d * 86400000), y: lv });
     }
 
-    var minX = scatterPts.length ? scatterPts[0].x : new Date();
-    var maxX = scatterPts.length ? scatterPts[scatterPts.length - 1].x : new Date();
-    if (expPts.length && expPts[expPts.length - 1].x > maxX) maxX = expPts[expPts.length - 1].x;
-    var alertLine = Number(limit) * Number(alertPct) / 100;
+    var minX = scatterPts.length ? scatterPts[0].x : baseTs;
+    var alertLine = limitNum * Number(alertPct) / 100;
+
+    // Plugin: grey future zone + dashed today line
+    var capFuturePlugin = {
+      id: 'capFuture',
+      beforeDraw: function(chart) {
+        var xScale = chart.scales.x;
+        var ctx2 = chart.ctx;
+        var todayX = xScale.getPixelForValue(todayNow.getTime());
+        var rightX = chart.chartArea.right;
+        if (todayX >= chart.chartArea.left && todayX <= rightX) {
+          ctx2.save();
+          ctx2.fillStyle = 'rgba(120,120,120,0.13)';
+          ctx2.fillRect(todayX, chart.chartArea.top, rightX - todayX, chart.chartArea.bottom - chart.chartArea.top);
+          ctx2.setLineDash([5, 5]);
+          ctx2.strokeStyle = '#6b7280';
+          ctx2.lineWidth = 1.5;
+          ctx2.beginPath();
+          ctx2.moveTo(todayX, chart.chartArea.top);
+          ctx2.lineTo(todayX, chart.chartArea.bottom);
+          ctx2.stroke();
+          ctx2.setLineDash([]);
+          ctx2.fillStyle = '#6b7280';
+          ctx2.font = '11px sans-serif';
+          ctx2.fillText('Today', todayX + 5, chart.chartArea.top + 14);
+          ctx2.fillText('Forecast \u2192', todayX + 5, chart.chartArea.top + 28);
+          ctx2.restore();
+        }
+      }
+    };
+
+    if (capacityChart) { capacityChart.destroy(); capacityChart = null; }
+    var ctx = document.getElementById('capacity-chart').getContext('2d');
 
     var datasets = [
       {
-        label: 'Disk Usage',
+        label: 'Disk Usage (measured)',
         data: scatterPts,
-        backgroundColor: 'rgba(99,102,241,0.4)',
+        backgroundColor: 'rgba(99,102,241,0.5)',
         borderColor: '#6366f1',
         pointRadius: 3,
         type: 'scatter',
         order: 4
       },
       {
-        label: 'Exponential Fit',
+        label: 'Exponential Forecast',
         data: expPts,
         borderColor: '#f59e0b',
         backgroundColor: 'transparent',
-        borderWidth: 2,
+        borderWidth: 2.5,
         pointRadius: 0,
         type: 'line',
         order: 3
@@ -1025,22 +1071,22 @@ var runCapacityAnalysis = async function() {
 
     if (linPts.length) {
       datasets.push({
-        label: 'Linear Comparison',
+        label: 'Linear (overoptimistic)',
         data: linPts,
         borderColor: '#ef4444',
         borderDash: [6, 4],
         backgroundColor: 'transparent',
-        borderWidth: 2,
+        borderWidth: 1.5,
         pointRadius: 0,
         type: 'line',
         order: 2
       });
     }
 
-    // Capacity line
+    // Capacity limit line (red dashed)
     datasets.push({
-      label: 'Capacity (' + limit + ' GB)',
-      data: [{ x: minX, y: Number(limit) }, { x: maxX, y: Number(limit) }],
+      label: 'Capacity limit (' + limit + ' GB)',
+      data: [{ x: minX, y: limitNum }, { x: chartEndDate, y: limitNum }],
       borderColor: '#ef4444',
       borderDash: [8, 4],
       borderWidth: 2,
@@ -1050,10 +1096,10 @@ var runCapacityAnalysis = async function() {
       order: 1
     });
 
-    // Alert line
+    // Alert threshold line (orange)
     datasets.push({
-      label: 'Alert (' + alertPct + '% = ' + fmtNum(alertLine, 0) + ' GB)',
-      data: [{ x: minX, y: alertLine }, { x: maxX, y: alertLine }],
+      label: 'Alert threshold (' + alertPct + '% = ' + fmtNum(alertLine, 0) + ' GB)',
+      data: [{ x: minX, y: alertLine }, { x: chartEndDate, y: alertLine }],
       borderColor: '#f97316',
       borderDash: [4, 4],
       borderWidth: 1.5,
@@ -1069,45 +1115,64 @@ var runCapacityAnalysis = async function() {
       options: {
         responsive: true, maintainAspectRatio: false,
         scales: {
-          x: { type: 'time', time: { unit: 'week' }, grid: { color: gridColor() }, ticks: { color: textColor() } },
-          y: { title: { display: true, text: 'GB', color: textColor() }, grid: { color: gridColor() }, ticks: { color: textColor() }, suggestedMax: Number(limit) * 1.1 }
+          x: {
+            type: 'time',
+            time: { unit: 'week' },
+            max: chartEndDate.getTime(),
+            grid: { color: gridColor() },
+            ticks: { color: textColor() }
+          },
+          y: {
+            title: { display: true, text: 'Storage (GB)', color: textColor() },
+            grid: { color: gridColor() },
+            ticks: { color: textColor() },
+            suggestedMax: limitNum * 1.05
+          }
         },
         plugins: { legend: { labels: { color: textColor() } } }
-      }
+      },
+      plugins: [capFuturePlugin]
     });
 
-    // Stats
+    // --- Stats boxes ---
     var growthRate = pred.daily_growth_rate_pct;
     var doublingTime = pred.doubling_time_days;
-    var r2 = expReg.r_squared;
-    var paramErrors = expReg.param_errors || [];
+    var linVsExpDays = pred.linear_vs_exp_days;
+    var currentGb = pred.current_gb;
 
     var statsHtml = '<div class="stats-grid">';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(r2, 4) + '</div><div class="stat-label">R\u00b2</div><div class="stat-desc">Exponential curve fit quality. &gt;0.95 = genuine compounding growth, not noise.</div></div>';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(growthRate, 3) + '%</div><div class="stat-label">Growth Rate (/day)</div><div class="stat-desc">Percentage storage increase per day. Compounds \u2014 small rates fill disks fast.</div></div>';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(doublingTime, 1) + '</div><div class="stat-label">Doubling Time (days)</div><div class="stat-desc">Days until current usage doubles. Rule of 72: 72 \u00f7 daily% gives this number.</div></div>';
-    if (paramErrors.length >= 2) {
-      statsHtml += '<div class="glass-card stat-item"><div class="stat-value">\u00b1' + fmtNum(paramErrors[0], 3) + ' / \u00b1' + fmtNum(paramErrors[1], 6) + '</div><div class="stat-label">Param Errors (a / b)</div><div class="stat-desc">Confidence bounds on curve shape \u2014 lower = tighter, more reliable prediction.</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(currentGb, 0) + ' GB</div><div class="stat-label">Current Usage</div><div class="stat-desc">Measured today \u2014 ' + fmtNum(currentGb / limitNum * 100, 1) + '% of the ' + limit + ' GB limit. The amber curve shows where it goes from here.</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(growthRate, 2) + '%/day</div><div class="stat-label">Daily Growth Rate</div><div class="stat-desc">Storage grows ' + fmtNum(growthRate, 2) + '% every day. Compounding means each day\u2019s growth is slightly larger than the last \u2014 the curve bends upward over time.</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(doublingTime, 0) + ' days</div><div class="stat-label">Doubling Time</div><div class="stat-desc">Storage will double in ~' + fmtNum(doublingTime, 0) + ' days. Rule of 72: 72 \u00f7 ' + fmtNum(growthRate, 2) + '%/day \u2248 ' + fmtNum(72/growthRate, 0) + '. Then it doubles again in the same time, regardless of how full the disk is.</div></div>';
+    if (linVsExpDays != null) {
+      statsHtml += '<div class="glass-card stat-item"><div class="stat-value" style="color:#ef4444">+' + Math.round(linVsExpDays) + ' days</div><div class="stat-label">Linear Model Error</div><div class="stat-desc">A straight-line forecast would tell you the disk lasts ' + Math.round(linVsExpDays) + ' extra days. That false confidence is exactly why exponential regression matters \u2014 see the gap between the two lines on the chart.</div></div>';
     }
     statsHtml += '</div>';
     document.getElementById('capacity-stats').innerHTML = statsHtml;
     document.getElementById('capacity-stats').style.display = 'block';
 
-    // Prediction
-    var expBreachDate = pred.breach_date;
-    var expDays = expBreachDate ? (new Date(expBreachDate) - new Date()) / 86400000 : pred.days_remaining;
-    var linVsExpDays = pred.linear_vs_exp_days;
+    // --- Prediction card ---
+    var exhaustionDate = pred.exhaustion_date;
+    var expDays = exhaustionDate ? (new Date(exhaustionDate) - todayNow) / 86400000 : pred.days_remaining;
     var alertDays = pred.days_to_alert;
+    var alertDate = pred.alert_date;
 
     var predHtml = '<div class="prediction-card">';
-    predHtml += '<div class="font-bold text-lg mb-1">\ud83d\udcbe Full in <span style="color:#f59e0b">' + (expDays != null ? Math.round(expDays) + ' days' : 'N/A') + '</span> (exponential)</div>';
-    if (linVsExpDays != null) {
-      predHtml += '<div class="text-sm mb-1">Linear model overestimates by: <strong>' + Math.round(linVsExpDays) + ' days</strong> <span style="color:#ef4444">\u2014 dangerous!</span></div>';
+    if (expDays != null && expDays > 0) {
+      var exhaustionFmt = exhaustionDate ? new Date(exhaustionDate).toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'}) : '';
+      predHtml += '<div class="font-bold text-lg mb-2" style="color:#f59e0b">\u26a0\ufe0f Disk full in <strong>' + Math.round(expDays) + ' days</strong>' + (exhaustionFmt ? ' (' + exhaustionFmt + ')' : '') + '</div>';
+    } else {
+      predHtml += '<div class="font-bold text-lg mb-2" style="color:#ef4444">\u274c Already at or past capacity threshold</div>';
     }
-    if (alertDays != null) {
-      predHtml += '<div class="text-sm mt-2 font-semibold" style="color:#f97316">\ud83d\udea8 Alert threshold (' + alertPct + '%) hit in ~' + Math.round(alertDays) + ' days</div>';
+    if (alertDays != null && alertDays > 0) {
+      var alertFmt = alertDate ? new Date(alertDate).toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'}) : '';
+      predHtml += '<div class="text-sm mb-2" style="color:#f97316">\ud83d\udea8 Alert fires in <strong>' + Math.round(alertDays) + ' days</strong>' + (alertFmt ? ' (' + alertFmt + ')' : '') + ' \u2014 when usage hits ' + fmtNum(alertLine, 0) + ' GB (' + alertPct + '% of limit)</div>';
     }
-    predHtml += '<div class="text-sm mt-2" style="color:#6b7280"><strong>Why exponential matters:</strong> Storage growth compounds \u2014 user data, logs, and indices grow faster over time. A linear model gives dangerous false confidence about remaining runway.</div>';
+    if (linVsExpDays != null && linBreachDays != null) {
+      var linBreachFmt = new Date(baseTs.getTime() + linBreachDays * 86400000).toLocaleDateString('en-GB', {day:'numeric', month:'short'});
+      predHtml += '<div class="text-sm mb-2" style="color:#ef4444">\u26a0\ufe0f Linear model predicts full on ' + linBreachFmt + ' \u2014 <strong>' + Math.round(linVsExpDays) + ' days later</strong>. That gap is dangerous false confidence.</div>';
+    }
+    predHtml += '<div class="text-sm mt-3" style="color:#6b7280"><strong>Why the curve bends upward:</strong> Storage compounds \u2014 user data, logs, and indices each generate more data over time. The amber curve captures this acceleration. The red dashed line (linear) stays flat and misses the bend entirely, underestimating the crisis by weeks.</div>';
     predHtml += '</div>';
     document.getElementById('capacity-prediction').innerHTML = predHtml;
     document.getElementById('capacity-prediction').style.display = 'block';
