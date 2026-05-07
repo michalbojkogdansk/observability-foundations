@@ -204,13 +204,35 @@
         <h2 class="text-2xl font-bold">Architecture Deep Dive</h2>
       </div>
       <div class="collapsible-body" id="arch-body">
-
-
-
-
-
-
-
+        <h3 class="text-lg font-semibold mt-4 mb-2">Request Flow</h3>
+        <div class="glass-card p-4 mb-4" style="font-size:.875rem;line-height:1.8">
+          <code>
+          1. <strong>Browser</strong> sends GET to regression-api.michal-bojko-gdansk.workers.dev<br>
+          2. <strong>Cloudflare Worker</strong> checks Redis cache (Upstash) for a matching key<br>
+          3. <em>Cache hit →</em> return cached JSON instantly from the edge<br>
+          4. <em>Cache miss →</em> Worker forwards request to <strong>Render.com</strong> Python backend<br>
+          5. <strong>Python/scipy</strong> reads data from <strong>Neon Postgres</strong>, runs regression<br>
+          6. Result returned to Worker → stored in Redis (TTL 5min) → sent to browser
+          </code>
+        </div>
+        <h3 class="text-lg font-semibold mt-4 mb-2">Why This Architecture?</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2 mb-2">
+          <div class="glass-card p-4 text-center">
+            <div class="text-2xl mb-2">⚡</div>
+            <div class="font-semibold mb-1">Edge Caching</div>
+            <p class="text-sm" style="color:#6b7280">Redis caches repeated queries — subsequent requests served in &lt;50ms from the edge.</p>
+          </div>
+          <div class="glass-card p-4 text-center">
+            <div class="text-2xl mb-2">🧮</div>
+            <div class="font-semibold mb-1">Real Math in Python</div>
+            <p class="text-sm" style="color:#6b7280">scipy provides production-grade regression with confidence intervals, not toy approximations.</p>
+          </div>
+          <div class="glass-card p-4 text-center">
+            <div class="text-2xl mb-2">🐘</div>
+            <div class="font-semibold mb-1">Serverless Postgres</div>
+            <p class="text-sm" style="color:#6b7280">Neon scales to zero when idle and branches instantly for what-if scenarios.</p>
+          </div>
+        </div>
       </div>
     </div>
   </section>
