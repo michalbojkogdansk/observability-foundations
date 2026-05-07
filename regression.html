@@ -853,10 +853,11 @@ var runErrorsAnalysis = async function() {
     }
     // Compute practical burn rate from raw past error rate data
     // Uses xHours + baseTs + yErrorRate (all defined above in this function)
+    var todayForBurn = new Date();
     var pastRates = [];
     xHours.forEach(function(h, i) {
       var d = new Date(baseTs.getTime() + h * 3600000);
-      if (d <= today) pastRates.push({d: d, r: yErrorRate[i]});
+      if (d <= todayForBurn) pastRates.push({d: d, r: yErrorRate[i]});
     });
     var burnPerDay = 0;
     if (pastRates.length >= 2) {
