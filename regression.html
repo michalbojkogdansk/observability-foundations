@@ -518,6 +518,37 @@ var runLatencyAnalysis = async function() {
       order: 0
     });
 
+    var todayTs = new Date();
+    var futureZonePlugin = {
+      id: 'futureZone',
+      beforeDraw: function(chart) {
+        var xScale = chart.scales.x;
+        var yScale = chart.scales.y;
+        if (!xScale || !yScale) return;
+        var todayX = xScale.getPixelForValue(todayTs.getTime());
+        var ctx2 = chart.ctx;
+        var top = yScale.top, bottom = yScale.bottom, right = xScale.right;
+        if (todayX >= right) return; // today is off the right edge
+        var clampedX = Math.max(todayX, xScale.left);
+        ctx2.save();
+        ctx2.fillStyle = 'rgba(120,120,140,0.10)';
+        ctx2.fillRect(clampedX, top, right - clampedX, bottom - top);
+        // "Forecast →" label
+        ctx2.fillStyle = 'rgba(150,150,170,0.7)';
+        ctx2.font = '11px sans-serif';
+        ctx2.fillText('Forecast \u2192', clampedX + 6, top + 14);
+        // vertical dashed today line
+        ctx2.setLineDash([4, 3]);
+        ctx2.strokeStyle = 'rgba(150,150,170,0.5)';
+        ctx2.lineWidth = 1;
+        ctx2.beginPath();
+        ctx2.moveTo(clampedX, top);
+        ctx2.lineTo(clampedX, bottom);
+        ctx2.stroke();
+        ctx2.restore();
+      }
+    };
+
     latencyChart = new Chart(ctx, {
       type: 'scatter',
       data: { datasets: datasets },
@@ -529,7 +560,8 @@ var runLatencyAnalysis = async function() {
           y: { title: { display: true, text: 'ms', color: textColor() }, grid: { color: gridColor() }, ticks: { color: textColor() } }
         },
         plugins: { legend: { labels: { color: textColor(), filter: function(item) { return item.text && item.text.charAt(0) !== '_'; } } } }
-      }
+      },
+      plugins: [futureZonePlugin]
     });
 
     // Residuals chart
