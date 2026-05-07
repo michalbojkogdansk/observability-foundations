@@ -700,21 +700,43 @@ var runErrorsAnalysis = async function() {
       scatterPts.push({ x: new Date(baseTs.getTime() + xHours[i] * 3600000), y: yBudget[i] });
     }
 
-    // Polynomial fit from x_hours + budget_regression.fitted
+    // Polynomial fit from x_hours + budget_regression.fitted, extended to exhaustion
     var polyPts = [];
     for (var i = 0; i < xHours.length && i < budgetFitted.length; i++) {
       polyPts.push({ x: new Date(baseTs.getTime() + xHours[i] * 3600000), y: budgetFitted[i] });
     }
+    // Extend polynomial into future using coefficients
+    var coeffs2 = budgetReg.coefficients || [];
+    if (coeffs2.length === 3 && xHours.length > 0) {
+      var lastHour = xHours[xHours.length - 1];
+      var a = coeffs2[0], b = coeffs2[1], c = coeffs2[2];
+      // Step forward in 24h increments until budget <= 0 or 120 days
+      for (var h = lastHour + 24; h < lastHour + 24*120; h += 24) {
+        var yVal = a*h*h + b*h + c;
+        if (yVal <= 0) {
+          polyPts.push({ x: new Date(baseTs.getTime() + h * 3600000), y: 0 });
+          break;
+        }
+        polyPts.push({ x: new Date(baseTs.getTime() + h * 3600000), y: yVal });
+      }
+    }
 
-    // Linear comparison: simple line from first to last point
+    // Linear comparison: extend from first to zero-crossing
     var linPts = [];
     if (scatterPts.length >= 2) {
       var firstY = yBudget[0];
       var lastY = yBudget[yBudget.length - 1];
       var firstX = scatterPts[0].x;
       var lastX = scatterPts[scatterPts.length - 1].x;
+      var ratePerMs = (lastY - firstY) / (lastX - firstX); // negative = declining
       linPts.push({ x: firstX, y: firstY });
       linPts.push({ x: lastX, y: lastY });
+      // Extend to zero if still positive at lastX
+      if (lastY > 0 && ratePerMs < 0) {
+        var msToZero = -lastY / ratePerMs;
+        var zeroX = new Date(lastX.getTime() + msToZero);
+        linPts.push({ x: zeroX, y: 0 });
+      }
     }
 
     var datasets = [
@@ -753,16 +775,46 @@ var runErrorsAnalysis = async function() {
       });
     }
 
+    var todayTsE = new Date();
+    var futureZonePluginE = {
+      id: 'futureZoneE',
+      beforeDraw: function(chart) {
+        var xScale = chart.scales.x;
+        var yScale = chart.scales.y;
+        if (!xScale || !yScale) return;
+        var todayX = xScale.getPixelForValue(todayTsE.getTime());
+        var ctx2 = chart.ctx;
+        var top = yScale.top, bottom = yScale.bottom, right = xScale.right;
+        if (todayX >= right) return;
+        var clampedX = Math.max(todayX, xScale.left);
+        ctx2.save();
+        ctx2.fillStyle = 'rgba(120,120,140,0.10)';
+        ctx2.fillRect(clampedX, top, right - clampedX, bottom - top);
+        ctx2.fillStyle = 'rgba(150,150,170,0.7)';
+        ctx2.font = '11px sans-serif';
+        ctx2.fillText('Forecast →', clampedX + 6, top + 14);
+        ctx2.setLineDash([4, 3]);
+        ctx2.strokeStyle = 'rgba(150,150,170,0.5)';
+        ctx2.lineWidth = 1;
+        ctx2.beginPath();
+        ctx2.moveTo(clampedX, top);
+        ctx2.lineTo(clampedX, bottom);
+        ctx2.stroke();
+        ctx2.restore();
+      }
+    };
+
     errorsChart = new Chart(ctx, {
       type: 'scatter',
       data: { datasets: datasets },
+      plugins: [futureZonePluginE],
       options: {
         responsive: true, maintainAspectRatio: false,
         scales: {
           x: { type: 'time', time: { unit: 'week' }, grid: { color: gridColor() }, ticks: { color: textColor() } },
-          y: { title: { display: true, text: 'Budget Remaining', color: textColor() }, grid: { color: gridColor() }, ticks: { color: textColor() } }
+          y: { min: 0, title: { display: true, text: 'Budget Remaining (%)', color: textColor() }, grid: { color: gridColor() }, ticks: { color: textColor() } }
         },
-        plugins: { legend: { labels: { color: textColor() } } }
+        plugins: { legend: { labels: { color: textColor(), filter: function(item) { return !item.text.startsWith('_'); } } } }
       }
     });
 
@@ -781,9 +833,15 @@ var runErrorsAnalysis = async function() {
     document.getElementById('errors-stats').style.display = 'block';
 
     // Prediction
-    var polyBreachDate = pred.breach_date;
-    var polyDays = polyBreachDate ? (new Date(polyBreachDate) - new Date()) / 86400000 : pred.days_remaining;
-    var linDays = linComp.linear_exhaustion_days;
+    var polyExhaustionDate = pred.exhaustion_date || pred.breach_date;
+    var polyDays = polyExhaustionDate
+      ? (new Date(polyExhaustionDate) - new Date()) / 86400000
+      : (pred.days_remaining != null ? pred.days_remaining : null);
+    // linDays from API is days from last DB row; adjust to be relative to today
+    var linDaysRaw = linComp.linear_exhaustion_days;
+    var lastDataTs = scatterPts.length ? scatterPts[scatterPts.length - 1].x : new Date();
+    var daysToLastPoint = (lastDataTs - new Date()) / 86400000;
+    var linDays = (linDaysRaw != null) ? linDaysRaw + daysToLastPoint : null;
     var predHtml = '<div class="prediction-card">';
     predHtml += '<div class="font-bold text-lg mb-1">\ud83d\udd25 Budget exhausted in <span style="color:#f59e0b">' + (polyDays != null ? Math.round(polyDays) + ' days' : 'N/A') + '</span> (polynomial)</div>';
     if (linDays != null) {
