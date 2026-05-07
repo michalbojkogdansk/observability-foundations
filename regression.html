@@ -819,9 +819,9 @@ var runErrorsAnalysis = async function() {
     });
 
     // Stats
-    var polyR2 = budgetReg.r_squared;
+    var polyR2 = errReg.r_squared;
     var linR2 = linComp.r_squared;
-    var coeffs = budgetReg.coefficients || [];
+    var coeffs = errReg.coefficients || [];
     var statsHtml = '<div class="stats-grid">';
     statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(polyR2, 4) + '</div><div class="stat-label">Poly R\u00b2</div><div class="stat-desc">Curve model fit. Higher than Linear R\u00b2 = acceleration is real, not noise.</div></div>';
     statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(linR2, 4) + '</div><div class="stat-label">Linear R\u00b2</div><div class="stat-desc">Straight-line fit. If much lower than Poly, the error rate is accelerating.</div></div>';
