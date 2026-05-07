@@ -56,8 +56,8 @@
  ]},
  { icon: '🔥', title: 'Failure Detection', desc: 'From 47 alerts to 3 root causes. Interactive alert storm correlator — tune grouping rules and watch the noise collapse.', href: 'failure-detection.html', status: 'live' },
  { icon: '📈', title: 'Regression Analysis', desc: 'Linear, polynomial &amp; exponential regression on live Neon Postgres data — powered by Python/scipy on Render.com with Cloudflare edge caching.', href: 'regression.html', status: 'live', tech: [
-              { icon: 'https://render.com/icons/favicon-32x32.png', title: 'Render.com' },
-              { icon: 'https://neon.tech/favicon.ico', title: 'Neon Postgres' },
+              { icon: 'https://dashboard.render.com/favicon.ico', title: 'Render.com' },
+              { icon: 'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/neon.svg', title: 'Neon Postgres' },
               { icon: 'https://www.python.org/favicon.ico', title: 'scipy' },
               { icon: 'https://www.cloudflare.com/favicon.ico', title: 'Cloudflare Workers' },
               { icon: 'https://redis.io/favicon.ico', title: 'Redis' },
@@ -80,10 +80,14 @@
  if (t.tech && t.tech.length) {
  techBadges = '<div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-700/50">' +
  t.tech.map(function(tech) {
- return '<span class="flex items-center justify-center bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-full p-1.5" title="' + tech.title + '">' +
- '<img src="' + tech.icon + '" width="16" height="16" alt="' + tech.title + '" title="' + tech.title + '" style="display:inline-block;vertical-align:middle" />' +
- '</span>';
- }).join('') +
+         var icon = tech.icon || tech.url || '';
+         var title = tech.title || tech.name || '';
+         var isSvg = icon.indexOf('.svg') !== -1;
+         var imgStyle = isSvg ? 'display:inline-block;vertical-align:middle;filter:brightness(0) saturate(100%) invert(35%) sepia(90%) saturate(400%) hue-rotate(200deg);' : 'display:inline-block;vertical-align:middle;';
+         return '<span class="flex items-center justify-center bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-full p-1.5" title="' + title + '">' +
+         '<img src="' + icon + '" width="16" height="16" alt="' + title + '" title="' + title + '" style="' + imgStyle + '" />' +
+         '</span>';
+       }).join('') +
  '</div>';
  }
  return '<a class="card topic-card" href="' + t.href + '">' +
