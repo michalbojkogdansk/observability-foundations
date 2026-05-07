@@ -1409,8 +1409,13 @@ var runWhatIfComparison = async function() {
       throw new Error(whatifData.error);
     }
 
+    // Main chart: use regression as-is
     renderBranchChart('main-branch-chart', mainData, sloMs, '#f59e0b', 'Main Branch', mainBranchChart, function(c){ mainBranchChart = c; });
-    renderBranchChart('whatif-branch-chart', whatifData, sloMs, '#4f46e5', 'What-If Branch', whatifChart, function(c){ whatifChart = c; });
+    // What-if chart: use SAME slope as main (just shifted intercept = main_intercept - fixMs)
+    // This prevents kink distortion from the artificial offset creating a wider CI wedge
+    var mainSlope_chart = mainData.regression.coefficients[1];
+    var mainIntercept_chart = mainData.regression.coefficients[0];
+    renderBranchChart('whatif-branch-chart', whatifData, sloMs, '#4f46e5', 'What-If Branch', whatifChart, function(c){ whatifChart = c; }, mainSlope_chart, mainIntercept_chart - fixMs);
 
     // Comparison panel
     var today = new Date();
@@ -1475,7 +1480,7 @@ var runWhatIfComparison = async function() {
   btn.textContent = '🔀 Compare Branches';
 };
 
-function renderBranchChart(canvasId, data, sloMs, lineColor, label, existingChart, setChart) {
+function renderBranchChart(canvasId, data, sloMs, lineColor, label, existingChart, setChart, overrideSlope, overrideIntercept) {
   var canvas = document.getElementById(canvasId);
   if (existingChart) { existingChart.destroy(); }
 
@@ -1483,30 +1488,32 @@ function renderBranchChart(canvasId, data, sloMs, lineColor, label, existingChar
   var today = new Date();
   var todayX = (today - baseTs) / 86400000;
 
-  var scatterData = data.x_days.map(function(x, i) { return {x: x, y: data.y_values[i]}; });
+  // Split scatter into past (grey) and future (coloured) so the fix offset is visible
+  var scatterPast = data.x_days
+    .map(function(x, i) { return {x: x, y: data.y_values[i]}; })
+    .filter(function(p) { return p.x <= todayX; });
+  var scatterFuture = data.x_days
+    .map(function(x, i) { return {x: x, y: data.y_values[i]}; })
+    .filter(function(p) { return p.x > todayX; });
 
-  // Regression line extended to breach or 10 days beyond data
-  var intercept = data.regression.coefficients[0];
-  var slope = data.regression.coefficients[1];
-  var xEnd = data.x_days[data.x_days.length - 1] + 30;
-  if (data.prediction && data.prediction.breach_date) {
-    var bd = new Date(data.prediction.breach_date.replace(/(\.\d{3})?$/, ''));
-    xEnd = Math.max(xEnd, (bd - baseTs) / 86400000 + 5);
+  // What-if chart: use same slope as main but shifted intercept (overrides prevent kink distortion)
+  var intercept = (overrideIntercept !== undefined) ? overrideIntercept : data.regression.coefficients[0];
+  var slope     = (overrideSlope    !== undefined) ? overrideSlope    : data.regression.coefficients[1];
+
+  // X axis: extend to where line hits SLO (or data end + 10 as fallback)
+  var xEnd = data.x_days[data.x_days.length - 1] + 10;
+  if (slope > 0) {
+    var xBreach = (sloMs - intercept) / slope;
+    if (xBreach > 0) xEnd = Math.max(xEnd, xBreach + 5);
   }
+  xEnd = Math.ceil(xEnd);
+
   var regPoints = [];
-  for (var x = 0; x <= xEnd; x += 1) {
-    regPoints.push({x: x, y: intercept + slope * x});
+  for (var rx = 0; rx <= xEnd; rx += 1) {
+    regPoints.push({x: rx, y: intercept + slope * rx});
   }
 
-  // Confidence band
-  var ci = data.regression.confidence_intervals;
-  var upper = [], lower = [];
-  for (var x = 0; x <= xEnd; x += 1) {
-    upper.push({x: x, y: ci[1][1] * x + ci[0][1]});
-    lower.push({x: x, y: ci[1][0] * x + ci[0][0]});
-  }
-
-  // Today line plugin
+  // Today line + future zone plugin
   var todayPlugin = {
     id: 'todayLine_' + canvasId,
     afterDraw: function(chart) {
@@ -1515,6 +1522,10 @@ function renderBranchChart(canvasId, data, sloMs, lineColor, label, existingChar
       var yScale = chart.scales.y;
       var xPx = xScale.getPixelForValue(todayX);
       ctx.save();
+      ctx.globalAlpha = 0.06;
+      ctx.fillStyle = '#6b7280';
+      ctx.fillRect(xPx, yScale.top, xScale.right - xPx, yScale.bottom - yScale.top);
+      ctx.globalAlpha = 1;
       ctx.setLineDash([5, 4]);
       ctx.strokeStyle = '#6b7280';
       ctx.lineWidth = 1.5;
@@ -1522,49 +1533,38 @@ function renderBranchChart(canvasId, data, sloMs, lineColor, label, existingChar
       ctx.moveTo(xPx, yScale.top);
       ctx.lineTo(xPx, yScale.bottom);
       ctx.stroke();
+      ctx.setLineDash([]);
       ctx.fillStyle = '#6b7280';
       ctx.font = '11px sans-serif';
       ctx.fillText('Today', xPx + 4, yScale.top + 14);
-      // Grey future zone
-      ctx.globalAlpha = 0.06;
-      ctx.fillStyle = '#6b7280';
-      ctx.fillRect(xPx, yScale.top, xScale.right - xPx, yScale.bottom - yScale.top);
-      ctx.globalAlpha = 1;
       ctx.restore();
     }
   };
+
+  var futureLabel = (overrideSlope !== undefined) ? 'Future (with fix applied)' : 'Future (forecast)';
+  var futureColor = (overrideSlope !== undefined) ? 'rgba(99,102,241,.5)' : 'rgba(156,163,175,.35)';
 
   var chart = new Chart(canvas.getContext('2d'), {
     type: 'scatter',
     data: {
       datasets: [
         {
-          type: 'scatter',
-          label: 'p99 latency',
-          data: scatterData,
-          backgroundColor: function(ctx) {
-            return ctx.raw && ctx.raw.x > todayX ? 'rgba(99,102,241,.4)' : 'rgba(156,163,175,.5)';
-          },
+          type: 'scatter', label: 'Historical p99',
+          data: scatterPast,
+          backgroundColor: 'rgba(156,163,175,.55)',
           radius: 3, hoverRadius: 5
         },
         {
-          type: 'line', label: 'Regression',
+          type: 'scatter', label: futureLabel,
+          data: scatterFuture,
+          backgroundColor: futureColor,
+          radius: 3, hoverRadius: 5
+        },
+        {
+          type: 'line', label: 'Trend line',
           data: regPoints,
-          borderColor: lineColor, borderWidth: 2,
+          borderColor: lineColor, borderWidth: 2.5,
           pointRadius: 0, fill: false
-        },
-        {
-          type: 'line', label: 'CI Upper',
-          data: upper,
-          borderColor: 'transparent', borderWidth: 0,
-          backgroundColor: lineColor.replace(')', ',.12)').replace('rgb', 'rgba'),
-          fill: '+1', pointRadius: 0
-        },
-        {
-          type: 'line', label: 'CI Lower',
-          data: lower,
-          borderColor: 'transparent', borderWidth: 0,
-          fill: false, pointRadius: 0
         }
       ]
     },
@@ -1572,7 +1572,7 @@ function renderBranchChart(canvasId, data, sloMs, lineColor, label, existingChar
       responsive: true, maintainAspectRatio: false,
       animation: false,
       plugins: {
-        legend: { display: false },
+        legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } },
         annotation: {
           annotations: {
             sloLine: {
