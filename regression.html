@@ -831,13 +831,24 @@ var runErrorsAnalysis = async function() {
       var ssRes = scatterPts.reduce(function(s,p){var yh=linSlopeL*p.x.getTime()+linIntL;return s+Math.pow(p.y-yh,2);},0);
       linR2 = ssTot > 0 ? 1 - ssRes/ssTot : 0;
     }
-    var coeffs = errReg.coefficients || [];
-    var statsHtml = '<div class="stats-grid">';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(polyR2, 4) + '</div><div class="stat-label">Poly R\u00b2</div><div class="stat-desc">Curve model fit. Higher than Linear R\u00b2 = acceleration is real, not noise.</div></div>';
-    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(linR2, 4) + '</div><div class="stat-label">Linear R\u00b2</div><div class="stat-desc">Straight-line fit. If much lower than Poly, the error rate is accelerating.</div></div>';
-    if (coeffs.length) {
-      statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + coeffs.map(function(c){ return fmtNum(c,4); }).join(', ') + '</div><div class="stat-label">Poly Coefficients</div><div class="stat-desc">a², a¹, a⁰ of the fitted curve. Positive quadratic term = upward acceleration.</div></div>';
+    // Compute practical burn rate from raw past error rate data
+    var pastRates = [];
+    errData.x_dates.forEach(function(ds, i) {
+      var d = new Date(ds);
+      if (d <= today) pastRates.push({d: d, r: errData.y_error_rate[i]});
+    });
+    var burnPerDay = 0;
+    if (pastRates.length >= 2) {
+      var fp2 = pastRates[0], lp2 = pastRates[pastRates.length-1];
+      var daySpan2 = (lp2.d - fp2.d) / 86400000 || 1;
+      var budgetStart = Math.max(0, (allowed - fp2.r) / allowed * 100);
+      var budgetEnd   = Math.max(0, (allowed - lp2.r) / allowed * 100);
+      burnPerDay = (budgetStart - budgetEnd) / daySpan2;
     }
+    var statsHtml = '<div class="stats-grid">';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(polyR2, 4) + '</div><div class="stat-label">Poly R\u00b2</div><div class="stat-desc">How well the acceleration curve fits reality. >0.95 = the error rate is genuinely compounding, not random noise. When Poly > Linear, the rate is not just growing \u2014 it\u2019s speeding up.</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(linR2, 4) + '</div><div class="stat-label">Linear R\u00b2</div><div class="stat-desc">How well a flat straight line fits the data. When this is much lower than Poly R\u00b2, a constant rate of growth cannot explain the data \u2014 the gap between them is your acceleration signal.</div></div>';
+    statsHtml += '<div class="glass-card stat-item"><div class="stat-value">' + fmtNum(burnPerDay, 2) + '%<span style="font-size:.75em;font-weight:400">/day</span></div><div class="stat-label">Burn Rate</div><div class="stat-desc">How fast error budget drains per day (historical average). \u00d730 = monthly budget consumed. When this exceeds 3.3%/day, budget exhausts in under a month.</div></div>';
     statsHtml += '</div>';
     document.getElementById('errors-stats').innerHTML = statsHtml;
     document.getElementById('errors-stats').style.display = 'block';
