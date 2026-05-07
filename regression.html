@@ -125,11 +125,16 @@
       <div class="flex flex-wrap items-end gap-4 mb-4">
         <div class="flex-1 min-w-[200px]">
           <label class="block text-sm font-medium mb-1">SLO Target</label>
-          <select id="errors-slo" class="rounded-lg border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-600">
-            <option value="0.999">99.9%</option>
-            <option value="0.9995">99.95%</option>
-            <option value="0.9999">99.99%</option>
-          </select>
+          <div class="flex items-center gap-3">
+            <select id="errors-slo" class="rounded-lg border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-600" onchange="updateSloDowntime()">
+              <option value="0.999">99.9%</option>
+              <option value="0.9995">99.95%</option>
+              <option value="0.9999">99.99%</option>
+            </select>
+            <span id="slo-downtime" class="text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap">
+              ≤ 8h 45m / year &nbsp;·&nbsp; 43m 49s / month
+            </span>
+          </div>
         </div>
         <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-6 rounded-lg transition" onclick="runErrorsAnalysis()">
           ▶ Run Analysis<span class="scenario-spinner" id="errors-spinner"></span>
@@ -635,6 +640,21 @@ var runLatencyAnalysis = async function() {
   showSpinner('latency-spinner', false);
 };
 
+/* ========== SLO DOWNTIME HELPER ========== */
+var SLO_DOWNTIME = {
+  '0.999':  { year: '8h 45m',  month: '43m 49s' },
+  '0.9995': { year: '4h 22m',  month: '21m 54s' },
+  '0.9999': { year: '52m 35s', month: '4m 21s'  }
+};
+function updateSloDowntime() {
+  var val = document.getElementById('errors-slo').value;
+  var dt = SLO_DOWNTIME[val] || {};
+  var el = document.getElementById('slo-downtime');
+  if (el && dt.year) {
+    el.textContent = '\u2264 ' + dt.year + ' / year\u00a0\u00b7\u00a0' + dt.month + ' / month';
+  }
+}
+
 /* ========== ERRORS ========== */
 async function loadErrorsData() {
   try {
@@ -832,10 +852,11 @@ var runErrorsAnalysis = async function() {
       linR2 = ssTot > 0 ? 1 - ssRes/ssTot : 0;
     }
     // Compute practical burn rate from raw past error rate data
+    // Uses xHours + baseTs + yErrorRate (all defined above in this function)
     var pastRates = [];
-    errData.x_dates.forEach(function(ds, i) {
-      var d = new Date(ds);
-      if (d <= today) pastRates.push({d: d, r: errData.y_error_rate[i]});
+    xHours.forEach(function(h, i) {
+      var d = new Date(baseTs.getTime() + h * 3600000);
+      if (d <= today) pastRates.push({d: d, r: yErrorRate[i]});
     });
     var burnPerDay = 0;
     if (pastRates.length >= 2) {
