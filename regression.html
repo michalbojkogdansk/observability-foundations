@@ -682,60 +682,60 @@ var runErrorsAnalysis = async function() {
     var res = await safeFetch(API_BASE + '/analyze/errors?slo_target=' + sloTarget + '&budget_hours=720');
     document.getElementById('errors-cache-info').innerHTML = cacheBadge(res);
 
-    var budgetReg = res.budget_regression || {};
-    var linComp = res.linear_comparison || {};
+    var errReg = res.error_rate_regression || {};
     var pred = res.prediction || {};
     var xHours = res.x_hours || [];
-    var yBudget = res.y_budget || [];
-    var budgetFitted = budgetReg.fitted || [];
+    var yErrorRate = res.y_error_rate || [];
+    var erFitted = errReg.fitted || [];
+    var erCoeffs = errReg.coefficients || [];
     var baseTsStr = res.base_timestamp;
     var baseTs = baseTsStr ? new Date(baseTsStr) : new Date();
+
+    // Compute budget dynamically from error rate + selected SLO
+    var sloVal = parseFloat(sloTarget);
+    var allowed = 1 - sloVal; // e.g. 0.001 for 99.9%
+    function rateToBudget(rate) { return Math.max(0, (allowed - rate) / allowed * 100); }
 
     if (errorsChart) { errorsChart.destroy(); errorsChart = null; }
     var ctx = document.getElementById('errors-chart').getContext('2d');
 
-    // Build scatter points from x_hours + y_budget
+    // Scatter: actual budget from actual error rates
     var scatterPts = [];
-    for (var i = 0; i < xHours.length && i < yBudget.length; i++) {
-      scatterPts.push({ x: new Date(baseTs.getTime() + xHours[i] * 3600000), y: yBudget[i] });
+    for (var i = 0; i < xHours.length && i < yErrorRate.length; i++) {
+      scatterPts.push({ x: new Date(baseTs.getTime() + xHours[i] * 3600000), y: rateToBudget(yErrorRate[i]) });
     }
 
-    // Polynomial fit from x_hours + budget_regression.fitted, extended to exhaustion
+    // Polynomial fit: convert fitted error rates → budget, extend to exhaustion
     var polyPts = [];
-    for (var i = 0; i < xHours.length && i < budgetFitted.length; i++) {
-      polyPts.push({ x: new Date(baseTs.getTime() + xHours[i] * 3600000), y: budgetFitted[i] });
+    for (var i = 0; i < xHours.length && i < erFitted.length; i++) {
+      polyPts.push({ x: new Date(baseTs.getTime() + xHours[i] * 3600000), y: rateToBudget(erFitted[i]) });
     }
-    // Extend polynomial into future using coefficients
-    var coeffs2 = budgetReg.coefficients || [];
-    if (coeffs2.length === 3 && xHours.length > 0) {
+    var exhaustionDate = null;
+    if (erCoeffs.length === 3 && xHours.length > 0) {
       var lastHour = xHours[xHours.length - 1];
-      var a = coeffs2[0], b = coeffs2[1], c = coeffs2[2];
-      // Step forward in 24h increments until budget <= 0 or 120 days
+      var ea = erCoeffs[0], eb = erCoeffs[1], ec = erCoeffs[2];
       for (var h = lastHour + 24; h < lastHour + 24*120; h += 24) {
-        var yVal = a*h*h + b*h + c;
-        if (yVal <= 0) {
-          polyPts.push({ x: new Date(baseTs.getTime() + h * 3600000), y: 0 });
+        var eRate = ea*h*h + eb*h + ec;
+        var bVal = rateToBudget(eRate);
+        polyPts.push({ x: new Date(baseTs.getTime() + h * 3600000), y: bVal });
+        if (bVal === 0 && !exhaustionDate) {
+          exhaustionDate = new Date(baseTs.getTime() + h * 3600000);
           break;
         }
-        polyPts.push({ x: new Date(baseTs.getTime() + h * 3600000), y: yVal });
       }
     }
 
-    // Linear comparison: extend from first to zero-crossing
+    // Linear comparison from first→last scatter, extended to 0
     var linPts = [];
     if (scatterPts.length >= 2) {
-      var firstY = yBudget[0];
-      var lastY = yBudget[yBudget.length - 1];
-      var firstX = scatterPts[0].x;
-      var lastX = scatterPts[scatterPts.length - 1].x;
-      var ratePerMs = (lastY - firstY) / (lastX - firstX); // negative = declining
+      var firstY = scatterPts[0].y, lastY = scatterPts[scatterPts.length-1].y;
+      var firstX = scatterPts[0].x, lastX = scatterPts[scatterPts.length-1].x;
+      var ratePerMs = (lastY - firstY) / (lastX.getTime() - firstX.getTime());
       linPts.push({ x: firstX, y: firstY });
       linPts.push({ x: lastX, y: lastY });
-      // Extend to zero if still positive at lastX
       if (lastY > 0 && ratePerMs < 0) {
         var msToZero = -lastY / ratePerMs;
-        var zeroX = new Date(lastX.getTime() + msToZero);
-        linPts.push({ x: zeroX, y: 0 });
+        linPts.push({ x: new Date(lastX.getTime() + msToZero), y: 0 });
       }
     }
 
@@ -812,7 +812,7 @@ var runErrorsAnalysis = async function() {
         responsive: true, maintainAspectRatio: false,
         scales: {
           x: { type: 'time', time: { unit: 'week' }, grid: { color: gridColor() }, ticks: { color: textColor() } },
-          y: { min: 0, title: { display: true, text: 'Budget Remaining (%)', color: textColor() }, grid: { color: gridColor() }, ticks: { color: textColor() } }
+          y: { min: 0, max: 100, title: { display: true, text: 'Budget Remaining (% of SLO allowance)', color: textColor() }, grid: { color: gridColor() }, ticks: { color: textColor(), callback: function(v) { return v + '%'; } } }
         },
         plugins: { legend: { labels: { color: textColor(), filter: function(item) { return !item.text.startsWith('_'); } } } }
       }
@@ -832,25 +832,38 @@ var runErrorsAnalysis = async function() {
     document.getElementById('errors-stats').innerHTML = statsHtml;
     document.getElementById('errors-stats').style.display = 'block';
 
-    // Prediction
-    var polyExhaustionDate = pred.exhaustion_date || pred.breach_date;
-    var polyDays = polyExhaustionDate
-      ? (new Date(polyExhaustionDate) - new Date()) / 86400000
-      : (pred.days_remaining != null ? pred.days_remaining : null);
-    // linDays from API is days from last DB row; adjust to be relative to today
-    var linDaysRaw = linComp.linear_exhaustion_days;
-    var lastDataTs = scatterPts.length ? scatterPts[scatterPts.length - 1].x : new Date();
-    var daysToLastPoint = (lastDataTs - new Date()) / 86400000;
-    var linDays = (linDaysRaw != null) ? linDaysRaw + daysToLastPoint : null;
-    var predHtml = '<div class="prediction-card">';
-    predHtml += '<div class="font-bold text-lg mb-1">\ud83d\udd25 Budget exhausted in <span style="color:#f59e0b">' + (polyDays != null ? Math.round(polyDays) + ' days' : 'N/A') + '</span> (polynomial)</div>';
-    if (linDays != null) {
-      predHtml += '<div class="text-sm mb-2">Linear model says: <strong>' + Math.round(linDays) + ' days</strong> \u2014 <span style="color:#ef4444">difference of ' + Math.abs(Math.round(linDays) - Math.round(polyDays)) + ' days!</span></div>';
+    // Prediction — use JS-computed exhaustionDate (browser-relative, SLO-aware)
+    var polyDays = exhaustionDate ? (exhaustionDate - new Date()) / 86400000 : null;
+    // Linear exhaustion: last scatter point y>0 → project to 0
+    var linExDate = null;
+    if (linPts.length >= 3) { linExDate = linPts[linPts.length - 1].x; }
+    var linDays = linExDate ? (linExDate - new Date()) / 86400000 : null;
+    // Today's budget from scatter nearest to now
+    var todayMs = new Date().getTime();
+    var closestIdxE2 = 0, minDiffE3 = Infinity;
+    for (var ci4 = 0; ci4 < scatterPts.length; ci4++) {
+      var dE = Math.abs(scatterPts[ci4].x.getTime() - todayMs);
+      if (dE < minDiffE3) { minDiffE3 = dE; closestIdxE2 = ci4; }
     }
-    if (pred.acceleration) {
-      predHtml += '<div class="text-sm mb-2" style="color:#f59e0b"><strong>' + pred.acceleration + '</strong></div>';
+    var currBudgetPct = scatterPts.length ? scatterPts[closestIdxE2].y : null;
+    var alreadyExhausted = polyDays !== null && polyDays < 0;
+    var predHtml = '<div class="prediction-card" style="' + (alreadyExhausted ? 'border-left-color:#ef4444;background:rgba(239,68,68,0.08)' : '') + '">';
+    if (alreadyExhausted) {
+      predHtml += '<div class="font-bold text-lg mb-1" style="color:#ef4444">\u274c Budget Already Exhausted</div>';
+      predHtml += '<div class="text-sm mb-2">At ' + (sloVal*100).toFixed(2) + '% SLO the allowed error rate is ' + (allowed*100).toFixed(3) + '% — your traffic already exceeds this.</div>';
+    } else {
+      predHtml += '<div class="font-bold text-lg mb-1">\ud83d\udd25 Budget exhausted in <span style="color:#f59e0b">' + (polyDays != null ? Math.round(polyDays) + ' days' : 'N/A') + '</span> (polynomial)</div>';
+      if (linDays != null && polyDays != null) {
+        var diff = Math.round(linDays) - Math.round(polyDays);
+        predHtml += '<div class="text-sm mb-2">Linear model says: <strong>' + Math.round(linDays) + ' days</strong> \u2014 <span style="color:#ef4444">' + Math.abs(diff) + ' days ' + (diff > 0 ? 'more optimistic' : 'more pessimistic') + '!</span></div>';
+      }
     }
-    predHtml += '<div class="text-sm" style="color:#6b7280"><strong>Why polynomial matters:</strong> Error rates often accelerate under load. A linear model underestimates the burn rate, giving you a false sense of safety. The polynomial captures acceleration and gives a more realistic (and often shorter) runway.</div>';
+    if (currBudgetPct !== null) {
+      predHtml += '<div class="text-sm mb-2">Today\'s budget remaining: <strong>' + fmtNum(currBudgetPct, 1) + '%</strong> of ' + (sloVal*100).toFixed(2) + '% SLO allowance</div>';
+    }
+    if (!alreadyExhausted) {
+      predHtml += '<div class="text-sm" style="color:#6b7280"><strong>Why polynomial matters:</strong> Error rates often accelerate under load. A linear model underestimates the burn rate, giving you a false sense of safety. The polynomial captures the acceleration.</div>';
+    }
     predHtml += '</div>';
     document.getElementById('errors-prediction').innerHTML = predHtml;
     document.getElementById('errors-prediction').style.display = 'block';
