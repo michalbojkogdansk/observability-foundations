@@ -204,80 +204,13 @@
         <h2 class="text-2xl font-bold">Architecture Deep Dive</h2>
       </div>
       <div class="collapsible-body" id="arch-body">
-        <h3 class="text-lg font-semibold mt-4 mb-2">Request Flow</h3>
-        <div class="glass-card p-4 mb-4" style="font-size:.875rem;line-height:1.8">
-          <code>
-          1. <strong>Browser</strong> sends GET to regression-api.michal-bojko-gdansk.workers.dev<br>
-          2. <strong>Cloudflare Worker</strong> checks Redis cache (Upstash) for a matching key<br>
-          3. <em>Cache hit →</em> return cached JSON instantly from the edge<br>
-          4. <em>Cache miss →</em> Worker forwards request to <strong>Render.com</strong> Python backend<br>
-          5. <strong>Python/scipy</strong> reads data from <strong>Neon Postgres</strong>, runs regression<br>
-          6. Result returned to Worker → stored in Redis (TTL 5min) → sent to browser
-          </code>
-        </div>
 
-        <h3 class="text-lg font-semibold mb-2">Cloudflare Worker (Abbreviated)</h3>
-        <pre class="code-block"><code>export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    const cacheKey = url.pathname + url.search;
 
-    // Check Redis cache first
-    const cached = await env.REDIS.get(cacheKey);
-    if (cached) return Response.json({
-      ...JSON.parse(cached), _cache: 'hit'
-    });
 
-    // Forward to Render.com backend
-    const resp = await fetch(env.BACKEND_URL + cacheKey);
-    const data = await resp.json();
 
-    // Cache for 5 minutes
-    await env.REDIS.set(cacheKey, JSON.stringify(data),
-      { ex: 300 });
 
-    return Response.json({ ...data, _cache: 'miss' });
-  }
-}</code></pre>
 
-        <h3 class="text-lg font-semibold mt-4 mb-2">Python Regression Engine (Abbreviated)</h3>
-        <pre class="code-block"><code>from scipy import stats
-from scipy.optimize import curve_fit
-import numpy as np
 
-def linear_regression(x, y, slo_ms):
-    slope, intercept, r, p, se = stats.linregress(x, y)
-    breach_day = (slo_ms - intercept) / slope
-    return { "slope": slope, "intercept": intercept,
-             "r_squared": r**2, "p_value": p,
-             "breach_day": breach_day }
-
-def exponential_fit(x, y, threshold):
-    def exp_func(t, a, b): return a * np.exp(b * t)
-    popt, pcov = curve_fit(exp_func, x, y, p0=[y[0], 0.01])
-    full_day = np.log(threshold / popt[0]) / popt[1]
-    return { "a": popt[0], "b": popt[1],
-             "doubling_time": np.log(2)/popt[1],
-             "full_day": full_day }</code></pre>
-
-        <h3 class="text-lg font-semibold mt-4 mb-2">Why This Architecture?</h3>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-          <div class="glass-card p-4 text-center">
-            <div class="text-2xl mb-2">⚡</div>
-            <div class="font-semibold mb-1">Edge Caching</div>
-            <p class="text-sm" style="color:#6b7280">Redis caches repeated queries — subsequent requests served in &lt;50ms from the edge.</p>
-          </div>
-          <div class="glass-card p-4 text-center">
-            <div class="text-2xl mb-2">🧮</div>
-            <div class="font-semibold mb-1">Real Math in Python</div>
-            <p class="text-sm" style="color:#6b7280">scipy provides production-grade regression with confidence intervals, not toy approximations.</p>
-          </div>
-          <div class="glass-card p-4 text-center">
-            <div class="text-2xl mb-2">🐘</div>
-            <div class="font-semibold mb-1">Serverless Postgres</div>
-            <p class="text-sm" style="color:#6b7280">Neon scales to zero when idle and branches instantly for what-if scenarios.</p>
-          </div>
-        </div>
       </div>
     </div>
   </section>
@@ -295,9 +228,9 @@ def exponential_fit(x, y, threshold):
           <div class="text-lg font-semibold mb-1">statsmodels OLS</div>
           <p class="text-sm" style="color:#6b7280">Full-featured OLS regression with diagnostics, confidence intervals, and hypothesis testing.</p>
         </a>
-        <a href="https://towardsdatascience.com/when-linear-regression-fails/" target="_blank" rel="noopener" class="glass-card p-4 reading-card block no-underline">
-          <div class="text-lg font-semibold mb-1">When Linear Regression Fails in Production</div>
-          <p class="text-sm" style="color:#6b7280">Why polynomial and exponential models matter for real-world SRE prediction tasks.</p>
+        <a href="https://medium.com/observability-is-engineering/math-is-king-trends-means-linear-regression-0687e489a843" target="_blank" rel="noopener" class="glass-card p-4 reading-card block no-underline">
+          <div class="text-lg font-semibold mb-1">Math is King — Trends, Means &amp; Linear Regression</div>
+          <p class="text-sm" style="color:#6b7280">How linear regression can spot latency drift and capacity exhaustion before your on-call pager does.</p>
         </a>
       </div>
     </div>
