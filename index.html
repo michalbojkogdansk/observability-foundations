@@ -80,8 +80,8 @@
  if (t.tech && t.tech.length) {
  techBadges = '<div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-700/50">' +
  t.tech.map(function(tech) {
- return '<span class="flex items-center justify-center bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-full p-1.5" title="' + tech.name + '">' +
- '<img src="' + tech.url + '" width="16" height="16" alt="' + tech.name + '" title="' + tech.name + '" style="display:inline-block;vertical-align:middle" />' +
+ return '<span class="flex items-center justify-center bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-full p-1.5" title="' + tech.title + '">' +
+ '<img src="' + tech.icon + '" width="16" height="16" alt="' + tech.title + '" title="' + tech.title + '" style="display:inline-block;vertical-align:middle" />' +
  '</span>';
  }).join('') +
  '</div>';
