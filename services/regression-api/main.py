@@ -17,9 +17,10 @@ from pydantic import BaseModel
 from typing import Optional
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+NEON_WHATIF_URL = os.environ.get("NEON_WHATIF_URL", "")
 
-def get_conn():
-    return psycopg2.connect(DATABASE_URL)
+def get_conn(url=None):
+    return psycopg2.connect(url or DATABASE_URL)
 
 
 # ─── Models ───────────────────────────────────────────────────────────────────
@@ -41,7 +42,6 @@ class RegressionResult(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Test DB connection on startup
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
         print(f"⚠️ Database connection failed: {e}")
     yield
 
-app = FastAPI(title="Regression Analysis API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Regression Analysis API", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -198,7 +198,6 @@ def _exponential_regression(x, y):
         return a * np.exp(b * x)
     
     try:
-        # Initial guess from log-linear fit
         log_y = np.log(np.maximum(y, 1e-10))
         slope, intercept, _, _, _ = stats.linregress(x, log_y)
         p0 = [np.exp(intercept), slope]
@@ -247,12 +246,11 @@ def analyze_latency(slo_ms: float = Query(default=300, description="SLO threshol
     
     timestamps = [r[0] for r in rows]
     base_ts = timestamps[0]
-    x = np.array([(t - base_ts).total_seconds() / 86400 for t in timestamps])  # days
+    x = np.array([(t - base_ts).total_seconds() / 86400 for t in timestamps])
     y = np.array([r[1] for r in rows])
     
     result = _linear_regression(x, y)
     
-    # Predict SLO breach
     intercept, slope = result["coefficients"]
     if slope > 0:
         breach_day = (slo_ms - intercept) / slope
@@ -282,6 +280,66 @@ def analyze_latency(slo_ms: float = Query(default=300, description="SLO threshol
     }
 
 
+@app.get("/analyze/latency/whatif")
+def analyze_latency_whatif(
+    slo_ms: float = Query(default=300, description="SLO threshold in ms"),
+    fix_ms: float = Query(default=30, description="ms improvement applied to future rows"),
+):
+    """What-if latency regression — reads from Neon what-if branch, applies simulated fix to future rows."""
+    t0 = time.perf_counter()
+
+    whatif_url = NEON_WHATIF_URL or DATABASE_URL
+    conn = psycopg2.connect(whatif_url)
+    cur = conn.cursor()
+    cur.execute("SELECT ts, p99_ms FROM latency_metrics ORDER BY ts")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    now_ts = datetime.now(timezone.utc)
+    timestamps = [r[0] for r in rows]
+    base_ts = timestamps[0]
+    x = np.array([(t - base_ts).total_seconds() / 86400 for t in timestamps])
+
+    # Apply simulated fix: subtract fix_ms from future data points only
+    y = np.array([
+        max(r[1] - fix_ms, 50.0) if r[0] > now_ts and fix_ms > 0 else r[1]
+        for r in rows
+    ])
+
+    result = _linear_regression(x, y)
+
+    intercept, slope = result["coefficients"]
+    if slope > 0:
+        breach_day = (slo_ms - intercept) / slope
+        breach_date = (base_ts + __import__('datetime').timedelta(days=breach_day)).isoformat()
+        days_remaining = breach_day - x[-1]
+    else:
+        breach_date = None
+        days_remaining = None
+
+    computation_ms = (time.perf_counter() - t0) * 1000
+
+    return {
+        "scenario": "latency_drift_whatif",
+        "branch": "whatif-regression",
+        "branch_id": "br-bold-poetry-ajrn8b9g",
+        "fix_applied_ms": fix_ms,
+        "slo_ms": slo_ms,
+        "regression": result,
+        "prediction": {
+            "breach_date": breach_date,
+            "days_remaining": round(days_remaining, 1) if days_remaining else None,
+            "trend_per_day_ms": round(slope, 3),
+        },
+        "x_days": x.tolist(),
+        "y_values": y.tolist(),
+        "data_points": len(rows),
+        "computation_ms": round(computation_ms, 2),
+        "base_timestamp": base_ts.isoformat(),
+    }
+
+
 @app.get("/analyze/errors")
 def analyze_errors(
     budget_hours: float = Query(default=720, description="SLO window in hours (default 30 days)"),
@@ -299,20 +357,14 @@ def analyze_errors(
     
     timestamps = [r[0] for r in rows]
     base_ts = timestamps[0]
-    x = np.array([(t - base_ts).total_seconds() / 3600 for t in timestamps])  # hours
+    x = np.array([(t - base_ts).total_seconds() / 3600 for t in timestamps])
     y_rate = np.array([r[1] for r in rows])
     y_budget = np.array([r[2] for r in rows])
     
-    # Fit polynomial to error rate
     rate_result = _polynomial_regression(x, y_rate, degree=2)
-    
-    # Fit polynomial to budget remaining
     budget_result = _polynomial_regression(x, y_budget, degree=2)
     
-    # Predict budget exhaustion (when budget_remaining hits 0)
-    # Solve: c[0]*x^2 + c[1]*x + c[2] = 0
     coeffs = budget_result["coefficients"]
-    poly = np.poly1d(coeffs)
     roots = np.roots(coeffs)
     real_positive = [r.real for r in roots if np.isreal(r) and r.real > 0]
     
@@ -324,7 +376,6 @@ def analyze_errors(
         exhaustion_date = None
         hours_remaining = None
     
-    # Linear extrapolation for comparison
     linear_result = _linear_regression(x, y_budget)
     lin_intercept, lin_slope = linear_result["coefficients"]
     if lin_slope < 0:
@@ -378,16 +429,12 @@ def analyze_capacity(
     
     timestamps = [r[0] for r in rows]
     base_ts = timestamps[0]
-    x = np.array([(t - base_ts).total_seconds() / 86400 for t in timestamps])  # days
+    x = np.array([(t - base_ts).total_seconds() / 86400 for t in timestamps])
     y = np.array([r[1] for r in rows])
     
-    # Exponential fit
     exp_result = _exponential_regression(x, y)
-    
-    # Linear fit for comparison
     lin_result = _linear_regression(x, y)
     
-    # Predict capacity exhaustion
     a, b = exp_result["coefficients"]
     if b > 0:
         exhaustion_day = np.log(threshold_gb / a) / b
@@ -402,7 +449,6 @@ def analyze_capacity(
         days_remaining = None
         days_to_alert = None
     
-    # Linear prediction for comparison
     lin_intercept, lin_slope = lin_result["coefficients"]
     if lin_slope > 0:
         lin_exhaustion = (threshold_gb - lin_intercept) / lin_slope
@@ -410,7 +456,6 @@ def analyze_capacity(
     else:
         lin_days = None
     
-    # Doubling time
     doubling_time = np.log(2) / b if b > 0 else None
     
     computation_ms = (time.perf_counter() - t0) * 1000
@@ -439,18 +484,19 @@ def analyze_capacity(
     }
 
 
-# ─── Branch comparison (Neon feature) ────────────────────────────────────────
+# ─── Branch info ──────────────────────────────────────────────────────────────
 
 @app.get("/branch-info")
 def branch_info():
-    """Return info about what Neon branching enables."""
     return {
         "feature": "neon_branching",
-        "description": "Neon creates instant copy-on-write database branches. This lets you fork production data, inject a simulated scenario (e.g., traffic spike), and run regression against the what-if branch — without touching production.",
+        "whatif_branch": "whatif-regression",
+        "branch_id": "br-bold-poetry-ajrn8b9g",
+        "description": "Neon creates instant copy-on-write database branches. Fork production data, inject a simulated fix, and compare regression trajectories — without touching production.",
         "use_cases": [
-            "What-if: 'What happens to my p99 if traffic doubles next month?'",
-            "A/B compare: regression results on production vs. branch data",
-            "Safe experimentation: inject anomalies into branch, not prod",
+            "What-if: 'What happens to my p99 if we deploy this fix today?'",
+            "A/B compare: regression results on production vs. what-if branch data",
+            "Safe experimentation: changes affect branch only, not prod",
         ]
     }
 

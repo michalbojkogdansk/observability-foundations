@@ -186,17 +186,142 @@
     </div>
   </section>
 
-  <!-- ============ Neon Branching ============ -->
+    <!-- ============ Neon Branching ============ -->
   <section class="mt-8" id="neon-section">
-    <div class="glass-card p-6 md:p-8">
-      <h2 class="text-2xl font-bold mb-2">🌿 Neon Branching — What-If Scenarios</h2>
-      <div id="neon-branch-content">
-        <p style="color:#6b7280">Loading branch info…</p>
+    <div style="max-width:80rem;margin-left:auto;margin-right:auto;">
+
+      <!-- Header card -->
+      <div class="glass-card p-6 md:p-8 mb-4">
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+          <span style="font-size:2rem">🌿</span>
+          <div style="flex:1;min-width:200px">
+            <h2 class="text-2xl font-bold mb-1">Scenario 4 — Neon What-If Branch Simulator</h2>
+            <p style="color:#6b7280;font-size:.9rem">Fork the production database. Apply a simulated performance fix. Watch the SLO breach date shift — without touching production data.</p>
+          </div>
+          <span id="s4-admin-badge" style="display:none;background:#dc2626;color:#fff;padding:.25rem .75rem;border-radius:999px;font-size:.75rem;font-weight:600">🔒 ADMIN</span>
+        </div>
       </div>
+
+      <!-- Locked state -->
+      <div id="s4-locked" class="glass-card p-12" style="text-align:center">
+        <div style="font-size:4rem;margin-bottom:1rem">🔒</div>
+        <h3 class="text-xl font-bold mb-2">Admin Access Required</h3>
+        <p style="color:#6b7280;margin-bottom:1.5rem;max-width:480px;margin-left:auto;margin-right:auto">This scenario creates and queries a live Neon database branch — infrastructure that costs real money. Enter the admin password to continue.</p>
+        <button onclick="showPasswordModal()" style="background:#4f46e5;color:#fff;border:none;padding:.625rem 1.5rem;border-radius:999px;font-weight:600;cursor:pointer;font-size:.95rem">🔑 Unlock Admin Scenario</button>
+      </div>
+
+      <!-- Unlocked content -->
+      <div id="s4-content" style="display:none">
+
+        <!-- Branch info bar -->
+        <div class="glass-card p-4 mb-4" style="display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;font-size:.85rem">
+          <div><span style="color:#6b7280">Branch</span><br><strong>whatif-regression</strong></div>
+          <div><span style="color:#6b7280">Branch ID</span><br><code style="font-size:.8rem">br-bold-poetry-ajrn8b9g</code></div>
+          <div><span style="color:#6b7280">Rows</span><br><strong>168</strong> (copy-on-write from main)</div>
+          <div><span style="color:#6b7280">Status</span><br><span style="color:#16a34a;font-weight:600">● Live</span></div>
+          <div style="margin-left:auto"><button onclick="lockAdminScenario()" style="background:transparent;border:1px solid #6b7280;color:#6b7280;padding:.25rem .75rem;border-radius:6px;cursor:pointer;font-size:.8rem">🔒 Lock</button></div>
+        </div>
+
+        <!-- Controls -->
+        <div class="glass-card p-6 mb-4">
+          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:1.5rem;align-items:end;flex-wrap:wrap">
+            <div>
+              <label style="display:block;font-size:.875rem;font-weight:600;margin-bottom:.5rem">
+                Simulated Fix <span id="fix-ms-label" style="color:#4f46e5;font-weight:700">40 ms</span>
+                <span style="font-size:.75rem;color:#6b7280;font-weight:400"> reduction applied to future p99</span>
+              </label>
+              <input type="range" id="fix-slider" min="5" max="100" value="40" step="5"
+                oninput="document.getElementById('fix-ms-label').textContent = this.value + ' ms'"
+                style="width:100%;accent-color:#4f46e5">
+              <div style="display:flex;justify-content:space-between;font-size:.75rem;color:#9ca3af;margin-top:.25rem">
+                <span>5 ms (minor)</span><span>50 ms (medium)</span><span>100 ms (major refactor)</span>
+              </div>
+            </div>
+            <div>
+              <label style="display:block;font-size:.875rem;font-weight:600;margin-bottom:.5rem">SLO Target (ms)</label>
+              <select id="whatif-slo" style="width:100%;padding:.5rem;border-radius:6px;border:1px solid #e5e7eb;background:transparent">
+                <option value="300">300 ms</option>
+                <option value="250">250 ms</option>
+                <option value="400">400 ms</option>
+              </select>
+            </div>
+            <button id="compare-btn" onclick="runWhatIfComparison()" style="background:#4f46e5;color:#fff;border:none;padding:.625rem 1.5rem;border-radius:999px;font-weight:600;cursor:pointer;white-space:nowrap">
+              🔀 Compare Branches
+            </button>
+          </div>
+        </div>
+
+        <!-- Error -->
+        <div id="s4-error" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;padding:1rem;border-radius:8px;margin-bottom:1rem"></div>
+
+        <!-- Charts side by side -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem" id="s4-charts" style="display:none">
+          <div class="glass-card p-4">
+            <div style="font-size:.8rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">
+              🟠 Main Branch — Production Data
+            </div>
+            <canvas id="main-branch-chart" height="280"></canvas>
+          </div>
+          <div class="glass-card p-4">
+            <div style="font-size:.8rem;font-weight:600;color:#4f46e5;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">
+              🌿 What-If Branch — With Fix Applied
+            </div>
+            <canvas id="whatif-branch-chart" height="280"></canvas>
+          </div>
+        </div>
+
+        <!-- Comparison results -->
+        <div id="s4-results" style="display:none" class="glass-card p-6">
+          <h3 class="text-lg font-bold mb-4">📊 Branch Comparison</h3>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:1.5rem">
+            <div class="glass-card p-4 text-center">
+              <div style="font-size:.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Main Branch Breach</div>
+              <div id="s4-main-breach" style="font-size:1.4rem;font-weight:700;color:#dc2626;margin:.5rem 0">—</div>
+              <div id="s4-main-days" style="font-size:.85rem;color:#6b7280">—</div>
+            </div>
+            <div class="glass-card p-4 text-center">
+              <div style="font-size:.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">What-If Branch Breach</div>
+              <div id="s4-whatif-breach" style="font-size:1.4rem;font-weight:700;color:#16a34a;margin:.5rem 0">—</div>
+              <div id="s4-whatif-days" style="font-size:.85rem;color:#6b7280">—</div>
+            </div>
+            <div class="glass-card p-4 text-center">
+              <div style="font-size:.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Days Gained</div>
+              <div id="s4-days-gained" style="font-size:1.4rem;font-weight:700;color:#4f46e5;margin:.5rem 0">—</div>
+              <div style="font-size:.85rem;color:#6b7280">SLO headroom bought</div>
+            </div>
+            <div class="glass-card p-4 text-center">
+              <div style="font-size:.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:.05em">Trend Change</div>
+              <div id="s4-slope-change" style="font-size:1.4rem;font-weight:700;color:#0891b2;margin:.5rem 0">—</div>
+              <div style="font-size:.85rem;color:#6b7280">ms/day drift after fix</div>
+            </div>
+          </div>
+          <div id="s4-insight" style="background:rgba(79,70,229,.08);border-left:3px solid #4f46e5;padding:1rem;border-radius:0 8px 8px 0;font-size:.9rem;line-height:1.6"></div>
+        </div>
+
+      </div><!-- /s4-content -->
     </div>
   </section>
 
-  <!-- ============ Architecture Deep Dive ============ -->
+  <!-- Password modal -->
+  <div id="password-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
+    <div class="glass-card p-8" style="max-width:400px;width:90%;position:relative">
+      <button onclick="hidePasswordModal()" style="position:absolute;top:.75rem;right:.75rem;background:none;border:none;font-size:1.25rem;cursor:pointer;color:#6b7280">✕</button>
+      <div style="text-align:center;margin-bottom:1.5rem">
+        <div style="font-size:2.5rem;margin-bottom:.5rem">🔑</div>
+        <h3 class="text-xl font-bold">Admin Authentication</h3>
+        <p style="font-size:.85rem;color:#6b7280;margin-top:.5rem">Token valid for 30 minutes per session</p>
+      </div>
+      <input id="admin-password-input" type="password" placeholder="Enter admin password"
+        onkeydown="if(event.key==='Enter') verifyAdminPassword()"
+        style="width:100%;padding:.625rem 1rem;border:1px solid #e5e7eb;border-radius:8px;font-size:1rem;margin-bottom:.75rem;box-sizing:border-box;background:transparent">
+      <div id="admin-error" style="color:#dc2626;font-size:.85rem;margin-bottom:.75rem;min-height:1.25rem"></div>
+      <button id="admin-verify-btn" onclick="verifyAdminPassword()" style="width:100%;background:#4f46e5;color:#fff;border:none;padding:.75rem;border-radius:999px;font-weight:600;cursor:pointer;font-size:1rem">
+        Verify
+      </button>
+    </div>
+  </div>
+
+<!-- ============ Architecture Deep Dive ============ -->
   <section class="mt-8" id="architecture-section">
     <div class="glass-card p-6 md:p-8">
       <div class="collapsible-header" id="arch-toggle" onclick="toggleCollapsible('arch')">
@@ -1185,6 +1310,290 @@ document.addEventListener('DOMContentLoaded', function() {
   s.src='https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js';
   document.head.appendChild(s);
 })();
+
+/* ========== ADMIN / WHAT-IF SCENARIO ========== */
+
+var mainBranchChart = null;
+var whatifChart = null;
+
+// Restore token from session storage on load
+(function() {
+  var stored = sessionStorage.getItem('regression_admin_token');
+  if (stored) {
+    // Try to restore — show unlocked UI
+    window._adminToken = stored;
+    var locked = document.getElementById('s4-locked');
+    var content = document.getElementById('s4-content');
+    if (locked && content) {
+      locked.style.display = 'none';
+      content.style.display = 'block';
+    }
+  }
+})();
+
+function showPasswordModal() {
+  document.getElementById('password-modal').style.display = 'flex';
+  document.getElementById('admin-password-input').value = '';
+  document.getElementById('admin-error').textContent = '';
+  setTimeout(function(){ document.getElementById('admin-password-input').focus(); }, 100);
+}
+
+function hidePasswordModal() {
+  document.getElementById('password-modal').style.display = 'none';
+}
+
+async function verifyAdminPassword() {
+  var pwd = document.getElementById('admin-password-input').value;
+  var btn = document.getElementById('admin-verify-btn');
+  var err = document.getElementById('admin-error');
+  if (!pwd) { err.textContent = 'Please enter the password'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Verifying…';
+  err.textContent = '';
+  try {
+    var res = await fetch('https://regression-api.michal-bojko-gdansk.workers.dev/admin/verify', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password: pwd})
+    });
+    var data = await res.json();
+    if (data.ok) {
+      window._adminToken = data.token;
+      sessionStorage.setItem('regression_admin_token', data.token);
+      hidePasswordModal();
+      document.getElementById('s4-locked').style.display = 'none';
+      document.getElementById('s4-content').style.display = 'block';
+    } else {
+      err.textContent = data.error || 'Incorrect password';
+    }
+  } catch(e) {
+    err.textContent = 'Connection error: ' + e.message;
+  }
+  btn.disabled = false;
+  btn.textContent = 'Verify';
+}
+
+function lockAdminScenario() {
+  window._adminToken = null;
+  sessionStorage.removeItem('regression_admin_token');
+  document.getElementById('s4-locked').style.display = 'block';
+  document.getElementById('s4-content').style.display = 'none';
+  document.getElementById('s4-results').style.display = 'none';
+}
+
+var runWhatIfComparison = async function() {
+  var fixMs = parseInt(document.getElementById('fix-slider').value);
+  var sloMs = parseFloat(document.getElementById('whatif-slo').value) || 300;
+  var btn = document.getElementById('compare-btn');
+  var errDiv = document.getElementById('s4-error');
+  errDiv.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = '⏳ Comparing…';
+
+  try {
+    var token = window._adminToken || sessionStorage.getItem('regression_admin_token') || '';
+    var [mainData, whatifData] = await Promise.all([
+      fetch('https://regression-api.michal-bojko-gdansk.workers.dev/analyze/latency?slo_ms=' + sloMs).then(function(r){ return r.json(); }),
+      fetch('https://regression-api.michal-bojko-gdansk.workers.dev/admin/analyze/whatif?slo_ms=' + sloMs + '&fix_ms=' + fixMs, {
+        headers: {'Authorization': 'Bearer ' + token}
+      }).then(function(r){ return r.json(); })
+    ]);
+
+    if (whatifData.error) {
+      if (whatifData.error.includes('Unauthorized')) {
+        errDiv.textContent = 'Session expired — please unlock again.';
+        errDiv.style.display = 'block';
+        lockAdminScenario();
+        return;
+      }
+      throw new Error(whatifData.error);
+    }
+
+    renderBranchChart('main-branch-chart', mainData, sloMs, '#f59e0b', 'Main Branch', mainBranchChart, function(c){ mainBranchChart = c; });
+    renderBranchChart('whatif-branch-chart', whatifData, sloMs, '#4f46e5', 'What-If Branch', whatifChart, function(c){ whatifChart = c; });
+
+    // Comparison panel
+    var today = new Date();
+    function parseBreachDate(d) {
+      if (!d) return null;
+      return new Date(d.replace(/(\.\d{3})?$/, ''));
+    }
+    var mainBreachDate = parseBreachDate(mainData.prediction && mainData.prediction.breach_date);
+    var whatifBreachDate = parseBreachDate(whatifData.prediction && whatifData.prediction.breach_date);
+
+    function fmtDate(d) {
+      if (!d) return 'No breach';
+      return d.toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'});
+    }
+    function fmtDays(d) {
+      if (!d) return null;
+      var diff = Math.round((d - today) / 86400000);
+      if (diff < 0) return 'Already breached';
+      return 'in ' + diff + ' days';
+    }
+
+    document.getElementById('s4-main-breach').textContent = fmtDate(mainBreachDate);
+    document.getElementById('s4-main-days').textContent = fmtDays(mainBreachDate) || '';
+    document.getElementById('s4-whatif-breach').textContent = fmtDate(whatifBreachDate);
+    document.getElementById('s4-whatif-days').textContent = fmtDays(whatifBreachDate) || '';
+
+    var daysGained = (mainBreachDate && whatifBreachDate)
+      ? Math.round((whatifBreachDate - mainBreachDate) / 86400000) : null;
+    document.getElementById('s4-days-gained').textContent = daysGained !== null ? '+' + daysGained + ' days' : '—';
+
+    var mainSlope = mainData.regression && mainData.regression.coefficients ? mainData.regression.coefficients[1] : null;
+    var whatifSlope = whatifData.regression && whatifData.regression.coefficients ? whatifData.regression.coefficients[1] : null;
+    document.getElementById('s4-slope-change').textContent = whatifSlope !== null ? whatifSlope.toFixed(2) + ' ms/day' : '—';
+
+    // Insight
+    var insight = '';
+    if (daysGained !== null && whatifSlope !== null && mainSlope !== null) {
+      var slopeDelta = ((mainSlope - whatifSlope) / mainSlope * 100).toFixed(0);
+      insight = '🌿 <strong>What this means in practice:</strong> A ' + fixMs + 'ms fix deployed today ';
+      if (daysGained > 0) {
+        insight += 'buys your team <strong>' + daysGained + ' extra days</strong> before the SLO is at risk — ';
+        insight += 'moving the deadline from <strong>' + fmtDate(mainBreachDate) + '</strong> to <strong>' + fmtDate(whatifBreachDate) + '</strong>. ';
+        insight += 'The daily drift rate drops from ' + mainSlope.toFixed(2) + ' to ' + whatifSlope.toFixed(2) + ' ms/day (' + slopeDelta + '% slower degradation). ';
+        insight += 'This is the power of Neon branching — you ran a real regression on a forked copy of production, not a simulation.';
+      } else if (daysGained === 0) {
+        insight += 'does not meaningfully change the breach timeline at this SLO target. Consider a larger fix or a higher SLO threshold.';
+      } else {
+        insight += 'actually accelerates the breach — check that the fix does not introduce regressions in the historical window.';
+      }
+    }
+    document.getElementById('s4-insight').innerHTML = insight;
+
+    document.getElementById('s4-results').style.display = 'block';
+    document.getElementById('s4-charts').style.display = 'grid';
+
+  } catch(e) {
+    errDiv.textContent = 'Error: ' + e.message;
+    errDiv.style.display = 'block';
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🔀 Compare Branches';
+};
+
+function renderBranchChart(canvasId, data, sloMs, lineColor, label, existingChart, setChart) {
+  var canvas = document.getElementById(canvasId);
+  if (existingChart) { existingChart.destroy(); }
+
+  var baseTs = new Date(data.base_timestamp);
+  var today = new Date();
+  var todayX = (today - baseTs) / 86400000;
+
+  var scatterData = data.x_days.map(function(x, i) { return {x: x, y: data.y_values[i]}; });
+
+  // Regression line extended to breach or 10 days beyond data
+  var intercept = data.regression.coefficients[0];
+  var slope = data.regression.coefficients[1];
+  var xEnd = data.x_days[data.x_days.length - 1] + 30;
+  if (data.prediction && data.prediction.breach_date) {
+    var bd = new Date(data.prediction.breach_date.replace(/(\.\d{3})?$/, ''));
+    xEnd = Math.max(xEnd, (bd - baseTs) / 86400000 + 5);
+  }
+  var regPoints = [];
+  for (var x = 0; x <= xEnd; x += 1) {
+    regPoints.push({x: x, y: intercept + slope * x});
+  }
+
+  // Confidence band
+  var ci = data.regression.confidence_intervals;
+  var upper = [], lower = [];
+  for (var x = 0; x <= xEnd; x += 1) {
+    upper.push({x: x, y: ci[1][1] * x + ci[0][1]});
+    lower.push({x: x, y: ci[1][0] * x + ci[0][0]});
+  }
+
+  // Today line plugin
+  var todayPlugin = {
+    id: 'todayLine_' + canvasId,
+    afterDraw: function(chart) {
+      var ctx = chart.ctx;
+      var xScale = chart.scales.x;
+      var yScale = chart.scales.y;
+      var xPx = xScale.getPixelForValue(todayX);
+      ctx.save();
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = '#6b7280';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(xPx, yScale.top);
+      ctx.lineTo(xPx, yScale.bottom);
+      ctx.stroke();
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '11px sans-serif';
+      ctx.fillText('Today', xPx + 4, yScale.top + 14);
+      // Grey future zone
+      ctx.globalAlpha = 0.06;
+      ctx.fillStyle = '#6b7280';
+      ctx.fillRect(xPx, yScale.top, xScale.right - xPx, yScale.bottom - yScale.top);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+  };
+
+  var chart = new Chart(canvas.getContext('2d'), {
+    type: 'scatter',
+    data: {
+      datasets: [
+        {
+          type: 'scatter',
+          label: 'p99 latency',
+          data: scatterData,
+          backgroundColor: function(ctx) {
+            return ctx.raw && ctx.raw.x > todayX ? 'rgba(99,102,241,.4)' : 'rgba(156,163,175,.5)';
+          },
+          radius: 3, hoverRadius: 5
+        },
+        {
+          type: 'line', label: 'Regression',
+          data: regPoints,
+          borderColor: lineColor, borderWidth: 2,
+          pointRadius: 0, fill: false
+        },
+        {
+          type: 'line', label: 'CI Upper',
+          data: upper,
+          borderColor: 'transparent', borderWidth: 0,
+          backgroundColor: lineColor.replace(')', ',.12)').replace('rgb', 'rgba'),
+          fill: '+1', pointRadius: 0
+        },
+        {
+          type: 'line', label: 'CI Lower',
+          data: lower,
+          borderColor: 'transparent', borderWidth: 0,
+          fill: false, pointRadius: 0
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { display: false },
+        annotation: {
+          annotations: {
+            sloLine: {
+              type: 'line', scaleID: 'y', value: sloMs,
+              borderColor: '#dc2626', borderWidth: 1.5, borderDash: [4, 3],
+              label: { content: 'SLO ' + sloMs + 'ms', enabled: true, position: 'end', font: {size: 10} }
+            }
+          }
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Days from start' } },
+        y: { title: { display: true, text: 'p99 latency (ms)' } }
+      }
+    },
+    plugins: [todayPlugin]
+  });
+
+  setChart(chart);
+}
+
 </script>
 
 <script src="shared/nav.js"></script>
