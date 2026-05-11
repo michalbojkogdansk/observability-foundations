@@ -36,6 +36,8 @@
   .arch-badge-amber{background:#fef3c7;color:#92400e}.dark .arch-badge-amber{background:#78350f;color:#fde68a}
   .arch-arrow{color:#9ca3af;font-size:.85rem}
   .error-msg{color:#ef4444;font-size:.875rem;margin-top:.5rem}
+  .stale-banner{display:none;background:rgba(245,158,11,.12);border:1px solid #f59e0b;color:#92400e;border-radius:.5rem;padding:.5rem .75rem;font-size:.8rem;margin-top:.5rem}
+  .dark .stale-banner{color:#fde68a}
   .collapsible-header{cursor:pointer;display:flex;align-items:center;gap:.5rem;user-select:none}
   .collapsible-header svg{transition:transform .2s}
   .collapsible-header.open svg{transform:rotate(90deg)}
@@ -105,7 +107,8 @@
     <div class="glass-card p-6 md:p-8">
       <h2 class="text-2xl font-bold mb-1">Scenario 1 — TimescaleDB Spike Detector</h2>
       <p class="text-sm mb-1 font-semibold" style="color:#6366f1">time_bucket() · z-score anomalies · hypertable scans</p>
-      <p class="mb-4" style="color:#6b7280">TimescaleDB partitions your metrics into hourly hypertables and runs z-score anomaly detection in a single SQL query — far faster than a plain Postgres table scan.</p>
+      <p class="text-xs mb-2" style="color:#9ca3af"><strong>Z-score</strong> measures how many standard deviations a reading sits above or below its own average — in business terms, a z-score above 2.5 means "this spike is so unusual it would happen by chance less than 1% of the time, treat it as an incident."</p>
+      <p class="mb-4" style="color:#6b7280">TimescaleDB partitions your metrics into hourly hypertables and runs z-score anomaly detection in a single SQL query — far faster than a plain Postgres table scan. Think of it as a specialised edition of PostgreSQL built from the ground up for large volumes of time-stamped data: it speaks standard SQL but adds automatic partitioning by time, so queries over millions of rows stay fast even on a free-tier database.</p>
 
       <div class="two-panel">
         <!-- Panel A: Benchmark -->
@@ -122,7 +125,7 @@
 
           <label class="block text-sm font-medium mb-1">Time window</label>
           <div class="slider-container mb-3">
-            <input type="range" min="0" max="4" value="2" step="1" id="hours-slider" oninput="updateHoursLabel(this.value)" style="flex:1;min-width:160px">
+            <input type="range" min="0" max="4" value="2" step="1" id="hours-slider" oninput="updateHoursLabel(this.value); markStale()" style="flex:1;min-width:160px">
             <span class="slider-val" id="hours-val">24h</span>
           </div>
           <div class="flex justify-between text-xs mb-4" style="color:#9ca3af">
@@ -184,7 +187,8 @@ GROUP BY bucket ORDER BY bucket;</pre>
             </div>
           </div>
 
-          <div id="bench-error" class="error-msg"></div>
+          <div id="stale-banner" class="stale-banner">⚠ Filters changed — click <strong>Run TimescaleDB Query</strong> to update results</div>
+      <div id="bench-error" class="error-msg"></div>
         </div>
 
         <!-- Panel B: Anomaly Chart -->
@@ -450,6 +454,7 @@ async function checkHealth() {
 /* ===== Benchmark ===== */
 async function runBenchmark() {
   document.getElementById('bench-error').textContent = '';
+  document.getElementById('stale-banner').style.display = 'none';
   showSpinner('bench-spinner', true);
   var service = document.getElementById('bench-service').value;
   var hoursIdx = parseInt(document.getElementById('hours-slider').value);
@@ -587,8 +592,15 @@ function drawAnomalyChart(data) {
   insightEl.innerHTML = '<strong>' + anomalyCount + ' anomalies</strong> detected across <strong>' + hours + ' hours</strong> — <strong>' + pct + '%</strong> of data points deviate by &gt;2.5&#963;';
 }
 
+function markStale() {
+  if (document.getElementById('bench-results') && document.getElementById('bench-results').style.display !== 'none') {
+    document.getElementById('stale-banner').style.display = 'block';
+  }
+}
 function redrawAnomalyChart() {
-  if (anomalyData) drawAnomalyChart(anomalyData);
+  if (anomalyData) {
+    try { drawAnomalyChart(anomalyData); } catch(e) { console.warn('chart redraw error', e); }
+  }
 }
 
 /* ===== Incident selector ===== */
