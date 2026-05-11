@@ -301,7 +301,6 @@ def analyze_latency_whatif(
     base_ts = timestamps[0]
     x = np.array([(t - base_ts).total_seconds() / 86400 for t in timestamps])
 
-    # Apply simulated fix: subtract fix_ms from future data points only
     y = np.array([
         max(r[1] - fix_ms, 50.0) if r[0] > now_ts and fix_ms > 0 else r[1]
         for r in rows
@@ -513,11 +512,11 @@ import urllib.request as _urllib_req
 import urllib.parse as _urllib_parse
 
 try:
-    from confluent_kafka import Producer, Consumer, TopicPartition
+    from kafka import KafkaProducer, KafkaAdminClient
     KAFKA_AVAILABLE = True
 except ImportError:
     KAFKA_AVAILABLE = False
-    Producer = Consumer = TopicPartition = None
+    KafkaProducer = KafkaAdminClient = None
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "")
 KAFKA_USERNAME  = os.environ.get("KAFKA_USERNAME", "")
@@ -529,14 +528,18 @@ _REDIS_TOKEN = "gQAAAAAAAXIlAAIncDFhNzlmOWU4ZWE3MTQ0ZjE5YjdjODdhYmNlY2E5YzZlZXAx
 _REDIS_KEY   = "spikes:events"
 
 
-def _kafka_conf():
-    return {
-        "bootstrap.servers": KAFKA_BOOTSTRAP,
-        "security.protocol": "SASL_SSL",
-        "sasl.mechanisms": "SCRAM-SHA-256",
-        "sasl.username": KAFKA_USERNAME,
-        "sasl.password": KAFKA_PASSWORD,
-    }
+def _kafka_producer():
+    return KafkaProducer(
+        bootstrap_servers=KAFKA_BOOTSTRAP,
+        security_protocol="SASL_SSL",
+        sasl_mechanism="SCRAM-SHA-256",
+        sasl_plain_username=KAFKA_USERNAME,
+        sasl_plain_password=KAFKA_PASSWORD,
+        value_serializer=lambda v: v if isinstance(v, bytes) else v.encode("utf-8"),
+        key_serializer=lambda k: k if isinstance(k, bytes) else k.encode("utf-8"),
+        request_timeout_ms=5000,
+        api_version_auto_timeout_ms=5000,
+    )
 
 
 def _redis_req(method: str, path: str) -> dict:
@@ -594,13 +597,21 @@ INCIDENT_TEMPLATES = {
 @app.get("/spikes/health")
 def spikes_health():
     kafka_ok = False
-    kafka_msg = "confluent-kafka not installed"
+    kafka_msg = "kafka-python not installed"
     if KAFKA_AVAILABLE and KAFKA_BOOTSTRAP:
         try:
-            p = Producer({**_kafka_conf(), "socket.timeout.ms": 4000, "message.timeout.ms": 4000})
-            p.flush(timeout=4)
+            admin = KafkaAdminClient(
+                bootstrap_servers=KAFKA_BOOTSTRAP,
+                security_protocol="SASL_SSL",
+                sasl_mechanism="SCRAM-SHA-256",
+                sasl_plain_username=KAFKA_USERNAME,
+                sasl_plain_password=KAFKA_PASSWORD,
+                request_timeout_ms=5000,
+                api_version_auto_timeout_ms=5000,
+            )
+            admin.close()
             kafka_ok = True
-            kafka_msg = f"connected — broker: {KAFKA_BOOTSTRAP}"
+            kafka_msg = f"connected — broker: {KAFKA_BOOTSTRAP.split(':')[0]}"
         except Exception as e:
             kafka_msg = str(e)
 
@@ -771,19 +782,21 @@ def spikes_trigger(
         }
         events.append(event)
 
-    kafka_meta = {"status": "confluent_kafka_not_installed"}
+    kafka_meta = {"status": "kafka-python not installed"}
     if KAFKA_AVAILABLE and KAFKA_BOOTSTRAP:
         try:
-            p = Producer(_kafka_conf())
+            p = _kafka_producer()
+            futures = []
             for ev in events:
                 ev_json = json.dumps(ev)
-                p.produce(KAFKA_TOPIC, key=ev["id"].encode(), value=ev_json.encode())
+                future = p.send(KAFKA_TOPIC, key=ev["id"], value=ev_json)
+                futures.append(future)
                 _redis_push(ev_json)
-            remaining = p.flush(timeout=10)
+            p.flush(timeout=10)
+            p.close()
             kafka_meta = {
                 "status": "published",
                 "count": len(events),
-                "unflushed": remaining,
                 "topic": KAFKA_TOPIC,
                 "broker": KAFKA_BOOTSTRAP.split(":")[0],
             }
