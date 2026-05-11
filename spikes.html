@@ -107,7 +107,7 @@
     <div class="glass-card p-6 md:p-8">
       <h2 class="text-2xl font-bold mb-1">Scenario 1 — TimescaleDB Spike Detector</h2>
       <p class="text-sm mb-1 font-semibold" style="color:#6366f1">time_bucket() · z-score anomalies · hypertable scans</p>
-      <p class="text-sm mb-3" style="color:#6b7280"><strong>Z-score</strong> measures how many standard deviations a reading sits above or below its own average. Formula: <code style="background:rgba(99,102,241,0.1);padding:1px 5px;border-radius:3px;font-size:0.8em">z = (value − μ) / σ</code> — a z above 2.5 means the spike sits in the extreme 1.2% tail of the distribution. In business terms: <em>"this spike is so unusual it would happen by chance less than 1% of the time — treat it as an incident."</em></p>
+      <p class="text-sm mb-3" style="color:#6b7280"><strong>Z-score</strong> measures how many standard deviations a reading sits above or below its own average. Formula: <code style="background:rgba(99,102,241,0.1);padding:1px 5px;border-radius:3px;font-size:0.8em">z = (value − μ) / σ</code> where <strong>μ</strong> = the mean (average over all samples) and <strong>σ</strong> = standard deviation (how spread out values typically are). Example: if avg latency is 150 ms and σ is 80 ms, a spike to 450 ms gives <code style="background:rgba(99,102,241,0.1);padding:1px 5px;border-radius:3px;font-size:0.8em">z = (450−150)/80 = 3.75</code> — flagged as an anomaly. A z above 2.5 sits in the extreme 1.2% tail of the distribution. In business terms: <em>"this spike is so unusual it would happen by chance less than 1% of the time — treat it as an incident."</em></p>
       <p class="text-sm mb-4" style="color:#6b7280"><strong>TimescaleDB</strong> is a PostgreSQL extension — not a separate database. Think of it as a specialised edition of PostgreSQL built from the ground up for large volumes of time-stamped data: it automatically partitions data into time-based chunks, so a 7-day query skips irrelevant partitions entirely and scans only what it needs. It speaks standard SQL but adds <code style="background:rgba(99,102,241,0.1);padding:1px 5px;border-radius:3px;font-size:0.8em">time_bucket()</code>, <code style="background:rgba(99,102,241,0.1);padding:1px 5px;border-radius:3px;font-size:0.8em">percentile_cont()</code>, and hypertable chunk-pruning — making anomaly detection on 100 K rows fast even on a free-tier Neon instance.</p>
 
       <div class="two-panel">
@@ -141,14 +141,14 @@
               <div class="text-xs font-semibold uppercase tracking-wide mb-1" style="color:#6b7280">🐘 Plain Postgres</div>
               <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold" id="pg-ms">—</span><span class="text-sm" style="color:#6b7280">ms</span>
-                <span class="text-sm ml-2" style="color:#6b7280"><span id="pg-rows">—</span> rows — 4 services × 3 metrics (one aggregate per combination, no time detail)</span>
+                <span class="text-sm ml-2" style="color:#6b7280"><span id="pg-rows">—</span> rows — (database, cache, api-gateway, payment-service) × (latency_ms, cpu_pct, error_rate) — one aggregate total per combination; no time breakdown, no percentiles</span>
               </div>
             </div>
             <div class="bench-box bench-box-ts mt-2">
               <div class="text-xs font-semibold uppercase tracking-wide mb-1" style="color:#6366f1">⚡ TimescaleDB</div>
               <div class="flex items-baseline gap-2 flex-wrap">
                 <span class="text-2xl font-bold" style="color:#6366f1" id="ts-ms">—</span><span class="text-sm" style="color:#6b7280">ms</span>
-                <span class="text-sm ml-2" style="color:#6b7280"><span id="ts-rows">—</span> hourly buckets — each with p95 + p99 per service/metric (scanning 103,692 raw rows)</span>
+                <span class="text-sm ml-2" style="color:#6b7280"><span id="ts-rows">—</span> aggregated rows — each row = 1 hour × 1 service × 1 metric, with p95+p99 computed from all raw samples in that bucket. TimescaleDB compressed 103,692 raw rows → these summaries</span>
                 <span class="text-xs ml-1" style="color:#9ca3af">incl. p99 per bucket</span>
               </div>
             </div>
@@ -166,13 +166,16 @@
             </div>
             <div class="collapsible-body" id="sql-body">
               <p class="text-xs mb-1 mt-2" style="color:#6b7280">Plain Postgres:</p>
-              <pre class="code-block" id="sql-pg">SELECT time_bucket('1 hour', ts) AS bucket,
-  AVG(value) AS avg_val,
-  COUNT(*) AS cnt,
-  STDDEV(value) AS std_dev
-FROM metrics
-WHERE service = $1 AND ts &gt; NOW() - INTERVAL '$2 hours'
-GROUP BY bucket ORDER BY bucket;</pre>
+              <pre class="code-block" id="sql-pg">SELECT service, metric_name,
+  AVG(value)  AS avg_val,
+  MAX(value)  AS max_val,
+  COUNT(*)    AS cnt
+FROM spike_metrics
+WHERE ts &gt; NOW() - INTERVAL '7 days'
+GROUP BY service, metric_name
+ORDER BY service, metric_name;
+-- Returns 12 rows (4 services x 3 metrics).
+-- No time axis, no percentiles.</pre>
               <p class="text-xs mb-1 mt-3" style="color:#6b7280">TimescaleDB (hypertable with chunk exclusion):</p>
               <pre class="code-block" id="sql-ts">SELECT time_bucket('1 hour', ts) AS bucket,
   AVG(value) AS avg_val,
@@ -182,7 +185,7 @@ GROUP BY bucket ORDER BY bucket;</pre>
   (AVG(value) - AVG(AVG(value)) OVER ())
     / NULLIF(STDDEV(AVG(value)) OVER (), 0) AS z_score
 FROM metrics
-WHERE service = $1 AND ts &gt; NOW() - INTERVAL '$2 hours'
+WHERE service = :service AND ts &gt; NOW() - INTERVAL '$2 hours'
 GROUP BY bucket ORDER BY bucket;</pre>
             </div>
           </div>
@@ -546,6 +549,7 @@ function drawAnomalyChart(data) {
           label: 'Anomaly (z > 2.5σ)',
           data: anomalyPoints,
           type: 'scatter',
+          clip: false,
           backgroundColor: '#ef4444',
           borderColor: '#ef4444',
           pointRadius: 7,
@@ -557,7 +561,8 @@ function drawAnomalyChart(data) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: { padding: { right: 24, top: 8 } },
+      clip: false,
+      layout: { padding: { right: 32, top: 10 } },
       scales: {
         x: {
           type: 'time',
