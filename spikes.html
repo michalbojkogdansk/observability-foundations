@@ -425,9 +425,9 @@ async function safeFetch(url, opts) {
 async function checkHealth() {
   try {
     var data = await safeFetch(API_BASE + '/spikes/health');
-    var renderOk = data.status === 'ok' || data.render === 'ok';
-    var redpandaOk = data.kafka === 'ok' || data.redpanda === 'ok';
-    var redisOk = data.redis === 'ok';
+    var renderOk = data._source === 'render_live' || data.status === 'ok';
+    var redpandaOk = (data.kafka && data.kafka.ok) || (data.redpanda && data.redpanda.ok);
+    var redisOk = data.redis && data.redis.ok;
     function setBadge(id, ok, label) {
       var el = document.getElementById(id);
       el.className = 'infra-badge ' + (ok ? 'infra-ok' : 'infra-err');
@@ -457,21 +457,25 @@ async function runBenchmark() {
   try {
     // Run benchmark
     var bench = await safeFetch(API_BASE + '/spikes/benchmark?service=' + encodeURIComponent(service) + '&hours=' + hours);
-    var pgMs = bench.postgres_ms !== undefined ? bench.postgres_ms : (bench.plain_ms || bench.pg_ms || '?');
-    var tsMs = bench.timescale_ms !== undefined ? bench.timescale_ms : (bench.ts_ms || '?');
-    var pgRows = bench.postgres_rows !== undefined ? bench.postgres_rows : (bench.plain_rows || bench.pg_rows || '?');
-    var tsRows = bench.timescale_rows !== undefined ? bench.timescale_rows : (bench.ts_rows || '?');
+    var pgMs = bench.plain_postgres ? Math.round(bench.plain_postgres.ms) : '?';
+    var tsMs = bench.timescaledb ? Math.round(bench.timescaledb.ms) : '?';
+    var pgRows = bench.plain_postgres ? bench.plain_postgres.rows_returned : '?';
+    var tsRows = bench.timescaledb ? bench.timescaledb.rows_returned : '?';
     document.getElementById('pg-ms').textContent = pgMs;
     document.getElementById('pg-rows').textContent = pgRows;
     document.getElementById('ts-ms').textContent = tsMs;
     document.getElementById('ts-rows').textContent = tsRows;
 
     var speedupBadge = document.getElementById('speedup-badge');
-    if (pgMs && tsMs && pgMs !== '?' && tsMs !== '?') {
-      var ratio = (parseFloat(pgMs) / parseFloat(tsMs)).toFixed(1);
-      var faster = parseFloat(tsMs) < parseFloat(pgMs);
-      speedupBadge.className = faster ? 'speedup-green' : 'speedup-amber';
-      speedupBadge.textContent = faster ? (ratio + '× faster') : ('TimescaleDB slower — ' + ratio + '×');
+    var speedupRatio = bench.speedup;
+    if (speedupRatio !== undefined && pgMs !== '?' && tsMs !== '?') {
+      if (speedupRatio >= 1) {
+        speedupBadge.className = 'speedup-green';
+        speedupBadge.textContent = speedupRatio.toFixed(1) + '× faster';
+      } else {
+        speedupBadge.className = 'speedup-amber';
+        speedupBadge.textContent = 'TimescaleDB slower — richer query (p99 + z-score add cost)';
+      }
     } else {
       speedupBadge.className = 'speedup-amber';
       speedupBadge.textContent = 'n/a';
@@ -493,27 +497,28 @@ async function runBenchmark() {
 
 function drawAnomalyChart(data) {
   var metric = document.getElementById('metric-select').value;
-  var buckets = data.buckets || data.data || [];
-  if (!buckets.length) return;
+  var allBuckets = data.buckets || data.data || [];
+  var allAnomalies = data.anomalies || [];
+  if (!allBuckets.length) return;
+
+  // Filter buckets by selected metric
+  var buckets = allBuckets.filter(function(b){ return b.metric_name === metric; });
+  if (!buckets.length) buckets = allBuckets; // fallback if no metric_name field
+
+  // Sort ascending by time
+  buckets = buckets.slice().sort(function(a,b){ return new Date(a.bucket||a.ts) - new Date(b.bucket||b.ts); });
 
   document.getElementById('anomaly-placeholder').style.display = 'none';
   var wrap = document.getElementById('anomaly-chart-wrap');
   wrap.style.display = 'block';
 
   var labels = buckets.map(function(b){ return new Date(b.bucket || b.ts); });
-  var values = buckets.map(function(b){
-    if (metric === 'latency_ms') return b.avg_latency_ms || b.avg_val || b.p99 || 0;
-    if (metric === 'error_rate') return b.avg_error_rate || b.error_rate || 0;
-    if (metric === 'cpu_pct') return b.avg_cpu_pct || b.cpu_pct || 0;
-    return b.avg_val || 0;
-  });
-  var anomalies = buckets.filter(function(b){ return b.z_score && Math.abs(b.z_score) > 2.5; });
-  var anomalyPoints = anomalies.map(function(b){
-    if (metric === 'latency_ms') return { x: new Date(b.bucket || b.ts), y: b.avg_latency_ms || b.avg_val || b.p99 || 0 };
-    if (metric === 'error_rate') return { x: new Date(b.bucket || b.ts), y: b.avg_error_rate || b.error_rate || 0 };
-    if (metric === 'cpu_pct') return { x: new Date(b.bucket || b.ts), y: b.avg_cpu_pct || b.cpu_pct || 0 };
-    return { x: new Date(b.bucket || b.ts), y: b.avg_val || 0 };
-  });
+  var values = buckets.map(function(b){ return b.avg_val || 0; });
+
+  // Use separate anomalies array filtered by metric
+  var metricAnomalies = allAnomalies.filter(function(a){ return a.metric_name === metric; });
+  var anomalyPoints = metricAnomalies.map(function(a){ return { x: new Date(a.ts), y: a.value }; });
+  var anomalies = metricAnomalies; // for insight count
 
   if (anomalyChart) { anomalyChart.destroy(); anomalyChart = null; }
   var ctx = document.getElementById('anomaly-chart').getContext('2d');
@@ -569,7 +574,7 @@ function drawAnomalyChart(data) {
 
   // Insight
   var totalBuckets = buckets.length;
-  var anomalyCount = anomalies.length;
+  var anomalyCount = metricAnomalies.length;
   var pct = totalBuckets > 0 ? ((anomalyCount / totalBuckets) * 100).toFixed(1) : 0;
   var hoursIdx = parseInt(document.getElementById('hours-slider').value);
   var hours = HOURS_MAP[hoursIdx];
