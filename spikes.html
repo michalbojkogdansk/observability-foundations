@@ -184,8 +184,8 @@ ORDER BY service, metric_name;
   STDDEV(value) AS std_dev,
   (AVG(value) - AVG(AVG(value)) OVER ())
     / NULLIF(STDDEV(AVG(value)) OVER (), 0) AS z_score
-FROM metrics
-WHERE service = :service AND ts &gt; NOW() - INTERVAL '$2 hours'
+FROM spike_metrics
+WHERE ts &gt; NOW() - INTERVAL '72 hours'
 GROUP BY bucket ORDER BY bucket;</pre>
             </div>
           </div>
