@@ -166,16 +166,20 @@
             </div>
             <div class="collapsible-body" id="sql-body">
               <p class="text-xs mb-1 mt-2" style="color:#6b7280">Plain Postgres:</p>
-              <pre class="code-block" id="sql-pg">SELECT service, metric_name,
-  AVG(value)  AS avg_val,
-  MAX(value)  AS max_val,
-  COUNT(*)    AS cnt
+              <pre class="code-block" id="sql-pg">SELECT date_trunc('hour', ts) AS bucket,
+  metric_name,
+  AVG(value)   AS avg_val,
+  MAX(value)   AS max_val,
+  PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY value) AS p99,
+  COUNT(*)     AS samples
 FROM spike_metrics
-WHERE ts &gt; NOW() - INTERVAL '7 days'
-GROUP BY service, metric_name
-ORDER BY service, metric_name;
--- Returns 12 rows (4 services x 3 metrics).
--- No time axis, no percentiles.</pre>
+WHERE ts &gt; NOW() - INTERVAL '24 hours'
+  AND service = 'payment-service'
+GROUP BY bucket, metric_name
+ORDER BY bucket DESC, metric_name;
+-- Same time-bucketed result as TimescaleDB.
+-- Uses standard date_trunc() -- no extension needed.
+-- Scans all rows in range; TimescaleDB prunes by chunk.</pre>
               <p class="text-xs mb-1 mt-3" style="color:#6b7280">TimescaleDB (hypertable with chunk exclusion):</p>
               <pre class="code-block" id="sql-ts">SELECT time_bucket('1 hour', ts) AS bucket,
   AVG(value) AS avg_val,
