@@ -141,15 +141,14 @@
               <div class="text-xs font-semibold uppercase tracking-wide mb-1" style="color:#6b7280">🐘 Plain Postgres</div>
               <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold" id="pg-ms">—</span><span class="text-sm" style="color:#6b7280">ms</span>
-                <span class="text-sm ml-2" style="color:#6b7280"><span id="pg-rows">—</span> rows — (database, cache, api-gateway, payment-service) × (latency_ms, cpu_pct, error_rate) — one aggregate total per combination; no time breakdown, no percentiles</span>
+                <span class="text-sm ml-2" style="color:#6b7280"><span id="pg-rows">—</span> rows — 1 hourly bucket × 1 metric per row for the selected service, p99 via PERCENTILE_CONT. Full index-range scan — reads every raw row in the window. Adding z-score costs nothing: window function runs on the already-grouped result (~72 rows), not on raw data.</span>
               </div>
             </div>
             <div class="bench-box bench-box-ts mt-2">
               <div class="text-xs font-semibold uppercase tracking-wide mb-1" style="color:#6366f1">⚡ TimescaleDB</div>
               <div class="flex items-baseline gap-2 flex-wrap">
                 <span class="text-2xl font-bold" style="color:#6366f1" id="ts-ms">—</span><span class="text-sm" style="color:#6b7280">ms</span>
-                <span class="text-sm ml-2" style="color:#6b7280"><span id="ts-rows">—</span> aggregated rows — each row = 1 hour × 1 service × 1 metric, with p95+p99 computed from all raw samples in that bucket. TimescaleDB compressed 103,692 raw rows → these summaries</span>
-                <span class="text-xs ml-1" style="color:#9ca3af">incl. p99 per bucket</span>
+                <span class="text-sm ml-2" style="color:#6b7280"><span id="ts-rows">—</span> rows — identical structure. <code style="background:rgba(99,102,241,0.1);padding:1px 4px;border-radius:3px;font-size:0.8em">time_bucket()</code> enables chunk pruning: only the 1–3 daily partition files covering the window are read; all others are skipped at the file level. Benefit scales with table size — at millions of rows this becomes orders-of-magnitude faster.</span>
               </div>
             </div>
             <div class="mt-3 flex items-center gap-2">
@@ -166,7 +165,9 @@
             </div>
             <div class="collapsible-body" id="sql-body">
               <p class="text-xs mb-1 mt-2" style="color:#6b7280">Plain Postgres:</p>
-              <pre class="code-block" id="sql-pg">SELECT date_trunc('hour', ts) AS bucket,
+              <pre class="code-block" id="sql-pg">-- Identical output to the TimescaleDB query below.
+-- date_trunc() does a full index-range scan through raw rows.
+SELECT date_trunc('hour', ts) AS bucket,
   metric_name,
   AVG(value)   AS avg_val,
   MAX(value)   AS max_val,
@@ -174,23 +175,31 @@
   COUNT(*)     AS samples
 FROM spike_metrics
 WHERE ts &gt; NOW() - INTERVAL '24 hours'
-  AND service = 'payment-service'
+  AND service = 'api-gateway'
 GROUP BY bucket, metric_name
 ORDER BY bucket DESC, metric_name;
--- Same time-bucketed result as TimescaleDB.
--- Uses standard date_trunc() -- no extension needed.
--- Scans all rows in range; TimescaleDB prunes by chunk.</pre>
+
+-- Adding z-score costs nothing — window runs on ~72 already-grouped rows:
+-- WITH hourly AS (... above ...)
+-- SELECT *,
+--   (avg_val - AVG(avg_val) OVER (PARTITION BY metric_name))
+--     / NULLIF(STDDEV(avg_val) OVER (PARTITION BY metric_name), 0) AS z_score
+-- FROM hourly ORDER BY bucket DESC, metric_name;</pre>
               <p class="text-xs mb-1 mt-3" style="color:#6b7280">TimescaleDB (hypertable with chunk exclusion):</p>
-              <pre class="code-block" id="sql-ts">SELECT time_bucket('1 hour', ts) AS bucket,
-  AVG(value) AS avg_val,
+              <pre class="code-block" id="sql-ts">-- Same output as above. time_bucket() tells the query planner which
+-- daily partition files overlap the window — all others are skipped
+-- entirely before any row is read. Gap widens at millions of rows.
+SELECT time_bucket('1 hour', ts) AS bucket,
+  metric_name,
+  AVG(value)   AS avg_val,
+  MAX(value)   AS max_val,
   PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY value) AS p99,
-  COUNT(*) AS cnt,
-  STDDEV(value) AS std_dev,
-  (AVG(value) - AVG(AVG(value)) OVER ())
-    / NULLIF(STDDEV(AVG(value)) OVER (), 0) AS z_score
+  COUNT(*)     AS samples
 FROM spike_metrics
-WHERE ts &gt; NOW() - INTERVAL '72 hours'
-GROUP BY bucket ORDER BY bucket;</pre>
+WHERE ts &gt; NOW() - INTERVAL '24 hours'
+  AND service = 'api-gateway'
+GROUP BY bucket, metric_name
+ORDER BY bucket DESC, metric_name;</pre>
             </div>
           </div>
 
@@ -483,10 +492,11 @@ async function runBenchmark() {
     if (speedupRatio !== undefined && pgMs !== '?' && tsMs !== '?') {
       if (speedupRatio >= 1) {
         speedupBadge.className = 'speedup-green';
-        speedupBadge.textContent = speedupRatio.toFixed(1) + '× faster';
+        speedupBadge.textContent = speedupRatio.toFixed(1) + '\u00d7 faster (chunk pruning active)';
       } else {
+        var inv = (1 / speedupRatio).toFixed(1);
         speedupBadge.className = 'speedup-amber';
-        speedupBadge.textContent = 'TimescaleDB slower — richer query (p99 + z-score add cost)';
+        speedupBadge.textContent = 'TimescaleDB slower \u00d7' + inv + ' \u2014 both queries identical; chunk overhead dominates at ' + (bench.total_rows_in_table ? bench.total_rows_in_table.toLocaleString() : '~207k') + ' rows';
       }
     } else {
       speedupBadge.className = 'speedup-amber';

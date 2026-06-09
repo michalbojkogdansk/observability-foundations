@@ -752,21 +752,28 @@ def spikes_benchmark(
     ts_rows = cur.fetchall()
     ts_ms = (time.perf_counter() - t0) * 1000
 
+    # Get actual total row count for display
+    conn2 = get_conn()
+    cur2 = conn2.cursor()
+    cur2.execute("SELECT COUNT(*) FROM spike_metrics")
+    total_rows = cur2.fetchone()[0]
+    cur2.close(); conn2.close()
+
     cur.close(); conn.close()
 
     return {
         "plain_postgres": {
-            "description": "date_trunc('hour') + percentile_cont — standard SQL, full range scan",
+            "description": "date_trunc('hour') + percentile_cont — standard SQL, full index-range scan",
             "rows_returned": len(plain_rows),
             "ms": round(plain_ms, 2),
         },
         "timescaledb": {
-            "description": "time_bucket(1h) + percentile_cont — chunk-pruned scan, same result",
+            "description": "time_bucket(1h) + percentile_cont — chunk-pruned scan, identical output",
             "rows_returned": len(ts_rows),
             "ms": round(ts_ms, 2),
         },
         "speedup": round(plain_ms / max(ts_ms, 0.1), 2),
-        "total_rows_scanned": 103680,
+        "total_rows_in_table": total_rows,
         "window": f"{hours}h",
         "service": service,
     }
