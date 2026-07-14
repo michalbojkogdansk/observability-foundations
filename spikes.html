@@ -241,7 +241,7 @@ ORDER BY bucket DESC, metric_name;</pre>
     <div class="glass-card p-6 md:p-8">
       <h2 class="text-2xl font-bold mb-1">Scenario 2 — Live Spike Stream (Redpanda)</h2>
       <p class="text-sm mb-1 font-semibold" style="color:#6366f1">Kafka publish · Redis buffer · live event feed</p>
-      <p class="mb-4" style="color:#6b7280">Trigger a synthetic incident — events are published to a Redpanda Kafka topic, consumed by a worker, and buffered in Redis for live polling.</p>
+      <p class="mb-4" style="color:#6b7280">Trigger a synthetic incident and watch it move through a real event pipeline — Kafka publish, worker consume, Redis buffer — so you learn how spike signals actually flow end-to-end, and how to tell a cascade failure, a memory leak, and a random spike apart in a live feed rather than on a static chart.</p>
 
       <div class="two-panel">
         <!-- Panel A: Incident Trigger -->
