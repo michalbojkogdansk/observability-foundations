@@ -662,7 +662,7 @@ async function triggerIncident() {
 
 function formatEvent(ev) {
   if (typeof ev === 'string') return ev;
-  var ts = ev.timestamp ? new Date(ev.timestamp).toISOString().slice(11,19) : '??:??:??';
+  var ts = (ev.ts || ev.timestamp) ? new Date(ev.ts || ev.timestamp).toISOString().slice(11,19) : '??:??:??';
   var svc = ev.service || ev.source || '—';
   var metric = ev.metric || ev.type || '';
   var val = ev.value !== undefined ? ev.value : '';
