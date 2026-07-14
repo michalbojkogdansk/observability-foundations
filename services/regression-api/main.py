@@ -523,8 +523,8 @@ KAFKA_USERNAME  = os.environ.get("KAFKA_USERNAME", "")
 KAFKA_PASSWORD  = os.environ.get("KAFKA_PASSWORD", "")
 KAFKA_TOPIC     = os.environ.get("KAFKA_TOPIC", "spike-events")
 
-_REDIS_URL   = "https://epic-swan-94757.upstash.io"
-_REDIS_TOKEN = "gQAAAAAAAXIlAAIncDFhNzlmOWU4ZWE3MTQ0ZjE5YjdjODdhYmNlY2E5YzZlZXAxOTQ3NTc"
+_REDIS_URL   = os.environ.get("REDIS_URL", "https://epic-swan-94757.upstash.io")
+_REDIS_TOKEN = os.environ.get("REDIS_TOKEN", "gQAAAAAAAXIlAAIncDFhNzlmOWU4ZWE3MTQ0ZjE5YjdjODdhYmNlY2E5YzZlZXAxOTQ3NTc")
 _REDIS_KEY   = "spikes:events"
 
 
@@ -537,8 +537,8 @@ def _kafka_producer():
         sasl_plain_password=KAFKA_PASSWORD,
         value_serializer=lambda v: v if isinstance(v, bytes) else v.encode("utf-8"),
         key_serializer=lambda k: k if isinstance(k, bytes) else k.encode("utf-8"),
-        request_timeout_ms=5000,
-        api_version_auto_timeout_ms=5000,
+        request_timeout_ms=10000,
+        api_version=(2, 5, 0),
     )
 
 
@@ -606,8 +606,8 @@ def spikes_health():
                 sasl_mechanism="SCRAM-SHA-256",
                 sasl_plain_username=KAFKA_USERNAME,
                 sasl_plain_password=KAFKA_PASSWORD,
-                request_timeout_ms=5000,
-                api_version_auto_timeout_ms=5000,
+                request_timeout_ms=10000,
+                api_version=(2, 5, 0),
             )
             admin.close()
             kafka_ok = True
