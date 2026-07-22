@@ -47,7 +47,7 @@ if TRACING_ENABLED:
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
     tracer = trace.get_tracer(OTEL_SERVICE_NAME)
-    Psycopg2Instrumentor().instrument()
+    Psycopg2Instrumentor().instrument(skip_dep_check=True)
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 NEON_WHATIF_URL = os.environ.get("NEON_WHATIF_URL", "")
