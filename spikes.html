@@ -330,31 +330,29 @@ ORDER BY bucket DESC, metric_name;</pre>
     </div>
   </section>
 
-  <!-- ============ Scenario 3: OTel (Coming Soon) ============ -->
+  <!-- ============ Scenario 3: OTel Trace Explorer ============ -->
   <section class="mt-8" id="otel-section">
     <div class="glass-card p-6 md:p-8">
       <h2 class="text-2xl font-bold mb-1">Scenario 3 — OpenTelemetry Trace Explorer</h2>
       <div class="flex items-center gap-2 mb-3">
-        <span class="arch-badge arch-badge-amber">🔧 In Progress — Grafana Cloud integration pending</span>
+        <span class="arch-badge arch-badge-amber" id="otel-status-badge">🔧 Backend ready — Grafana Cloud wiring pending</span>
       </div>
-      <p class="mb-5" style="color:#6b7280">The Render FastAPI service will be instrumented with the OpenTelemetry Python SDK — traces will be exported via OTLP to Grafana Cloud Tempo for distributed trace visualisation.</p>
+      <p class="mb-5" style="color:#6b7280">Run a request that touches three hops — a Neon query, a Python z-score pass, and a Redis cache check — instrumented with the OpenTelemetry Python SDK. Traces export via OTLP to Grafana Cloud Tempo so you can see exactly which span cost the time.</p>
 
-      <!-- What it will show -->
       <div class="two-panel mb-4">
         <div class="glass-card p-5">
           <div class="text-2xl mb-2">🔭</div>
-          <h3 class="font-semibold mb-2">What it will show</h3>
+          <h3 class="font-semibold mb-2">What it shows</h3>
           <ul class="text-sm space-y-1.5" style="color:#6b7280">
-            <li>• End-to-end traces from browser → Worker → Render → Neon</li>
-            <li>• Span breakdown: DB query time, Python compute, Redis cache</li>
-            <li>• Anomaly spans highlighted in Grafana Tempo</li>
-            <li>• P99 latency per trace vs. regression forecast</li>
+            <li>• One request, three spans: DB query, Python compute, Redis cache</li>
+            <li>• Z-score anomaly detection run in application code, not SQL</li>
+            <li>• Trace ID returned per request — deep-link straight into Tempo</li>
+            <li>• Same span-breakdown instinct incident response runs on</li>
           </ul>
         </div>
         <div class="glass-card p-5">
           <div class="text-2xl mb-2">📐</div>
           <h3 class="font-semibold mb-2">Architecture</h3>
-          <!-- Architecture diagram -->
           <div style="display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:.5rem">
             <div class="arch-badge arch-badge-indigo" style="width:100%;text-align:center">Render FastAPI (OTel SDK)</div>
             <div style="text-align:center;color:#9ca3af;font-size:.9rem">↓ OTLP/HTTP</div>
@@ -368,12 +366,29 @@ ORDER BY bucket DESC, metric_name;</pre>
         </div>
       </div>
 
-      <div class="glass-card p-5" style="background:rgba(245,158,11,.04);border:1px dashed #f59e0b">
+      <div class="glass-card p-5">
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <button id="otel-trigger-btn" class="glass-card px-5 py-2.5 font-semibold" style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:white;border:none;cursor:pointer" onclick="runTraceDemo()">🔎 Run Traced Request</button>
+          <span class="text-sm" style="color:#6b7280">service: api-gateway · window: 6h</span>
+        </div>
+        <div id="otel-results" style="display:none">
+          <div class="flex flex-wrap gap-4 text-sm mb-3">
+            <div><span style="color:#6b7280">Rows scanned:</span> <span id="otel-rows" class="font-semibold"></span></div>
+            <div><span style="color:#6b7280">Anomalies found:</span> <span id="otel-anomalies-count" class="font-semibold"></span></div>
+            <div><span style="color:#6b7280">Cache:</span> <span id="otel-cache" class="font-semibold"></span></div>
+            <div><span style="color:#6b7280">Compute time:</span> <span id="otel-ms" class="font-semibold"></span></div>
+          </div>
+          <div id="otel-anomaly-list" class="text-sm mb-3" style="color:#6b7280"></div>
+          <div id="otel-trace-link"></div>
+        </div>
+      </div>
+
+      <div class="glass-card p-5 mt-4" style="background:rgba(245,158,11,.04);border:1px dashed #f59e0b" id="otel-coming-soon">
         <div class="flex items-start gap-3">
           <span style="font-size:1.5rem">🛠️</span>
           <div>
             <div class="font-semibold mb-1">Coming soon</div>
-            <p class="text-sm" style="color:#6b7280">Grafana Cloud free-tier account provisioned. OTLP endpoint configured. Waiting on OTel SDK instrumentation of the FastAPI service and trace sampling rules. ETA: next sprint.</p>
+            <p class="text-sm" style="color:#6b7280">Spans are generated on every request already. Deep-linking into Tempo needs your Grafana Cloud OTLP endpoint wired into Render's environment — once that's set, the trace ID above will resolve to a live trace view.</p>
           </div>
         </div>
       </div>
@@ -401,6 +416,8 @@ ORDER BY bucket DESC, metric_name;</pre>
 
 <script>
 var API_BASE = 'https://regression-api.michal-bojko-gdansk.workers.dev';
+// Fill in once Grafana Cloud is wired: e.g. 'https://<stack>.grafana.net/explore?...&traceId='
+var TEMPO_EXPLORE_BASE = '';
 
 var HOURS_MAP = [6, 12, 24, 72, 168];
 var HOURS_LABELS = ['6h', '12h', '24h', '3d', '7d'];
@@ -725,6 +742,57 @@ async function clearEvents() {
 }
 
 // Run health check on load
+async function runTraceDemo() {
+  var btn = document.getElementById('otel-trigger-btn');
+  var resultsEl = document.getElementById('otel-results');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running...';
+  try {
+    var data = await safeFetch(API_BASE + '/spikes/trace-demo?service=api-gateway&hours=6');
+    if (!data) throw new Error('no response');
+
+    document.getElementById('otel-rows').textContent = data.rows_scanned;
+    document.getElementById('otel-anomalies-count').textContent = data.anomalies_found;
+    document.getElementById('otel-cache').textContent = data.cache_hit ? 'hit' : 'miss';
+    document.getElementById('otel-ms').textContent = data.computation_ms + ' ms';
+
+    var listEl = document.getElementById('otel-anomaly-list');
+    if (data.anomalies && data.anomalies.length) {
+      listEl.innerHTML = data.anomalies.slice(0, 5).map(function(a) {
+        return '<div>• ' + a.metric + ' = ' + a.value + ' (z=' + a.z_score + ')</div>';
+      }).join('');
+    } else {
+      listEl.textContent = 'No anomalies over |z| > 3 in this window.';
+    }
+
+    var linkEl = document.getElementById('otel-trace-link');
+    var badgeEl = document.getElementById('otel-status-badge');
+    var comingSoonEl = document.getElementById('otel-coming-soon');
+    if (data.trace_id) {
+      if (TEMPO_EXPLORE_BASE) {
+        linkEl.innerHTML = '<a href="' + TEMPO_EXPLORE_BASE + data.trace_id + '" target="_blank" rel="noopener" class="font-semibold" style="color:#4f46e5">View trace in Tempo →</a>';
+      } else {
+        linkEl.innerHTML = '<span class="text-sm" style="color:#6b7280">Trace ID: <code>' + data.trace_id + '</code> — search this in Tempo Explore once linked.</span>';
+      }
+    } else {
+      linkEl.innerHTML = '';
+    }
+    if (data.tracing_enabled) {
+      badgeEl.className = 'arch-badge arch-badge-green';
+      badgeEl.textContent = '✓ Tracing active — exporting to Grafana Cloud';
+      comingSoonEl.style.display = 'none';
+    }
+
+    resultsEl.style.display = 'block';
+  } catch (e) {
+    document.getElementById('otel-results').style.display = 'none';
+    alert('Trace demo request failed — check the API is reachable.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔎 Run Traced Request';
+  }
+}
+
 checkHealth();
 </script>
 

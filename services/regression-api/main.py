@@ -16,6 +16,39 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+
+OTEL_ENDPOINT = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+OTEL_HEADERS = os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", "")  # e.g. "Authorization=Basic <base64>"
+OTEL_SERVICE_NAME = os.environ.get("OTEL_SERVICE_NAME", "regression-api")
+TRACING_ENABLED = OTEL_AVAILABLE and bool(OTEL_ENDPOINT)
+
+tracer = None
+if TRACING_ENABLED:
+    headers_dict = {}
+    for pair in OTEL_HEADERS.split(","):
+        if "=" in pair:
+            k, v = pair.split("=", 1)
+            headers_dict[k.strip()] = v.strip()
+
+    resource = Resource.create({"service.name": OTEL_SERVICE_NAME})
+    provider = TracerProvider(resource=resource)
+    exporter = OTLPSpanExporter(endpoint=OTEL_ENDPOINT, headers=headers_dict)
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
+    tracer = trace.get_tracer(OTEL_SERVICE_NAME)
+    Psycopg2Instrumentor().instrument()
+
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 NEON_WHATIF_URL = os.environ.get("NEON_WHATIF_URL", "")
 
@@ -61,6 +94,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+if TRACING_ENABLED:
+    FastAPIInstrumentor.instrument_app(app)
 
 
 # ─── Health ───────────────────────────────────────────────────────────────────
@@ -854,3 +890,94 @@ def spikes_events(limit: int = Query(default=50, ge=1, le=200)):
 def clear_spikes_events():
     _redis_del()
     return {"cleared": True}
+
+
+# ─── Scenario 3: OpenTelemetry Trace Explorer ─────────────────────────────────
+
+def _span(name: str):
+    """No-op-safe span context manager — works whether or not tracing is enabled."""
+    if tracer:
+        return tracer.start_as_current_span(name)
+    from contextlib import nullcontext
+    return nullcontext()
+
+
+@app.get("/spikes/trace-demo")
+def spikes_trace_demo(
+    service: str = Query(default="api-gateway"),
+    hours: int = Query(default=6, ge=1, le=168),
+):
+    """
+    One request, three spans: DB query (Neon), Python compute (z-score anomaly
+    detection), Redis cache (read-through). Trace ID returned so the frontend
+    can deep-link straight into Grafana Tempo.
+    """
+    t0 = time.perf_counter()
+
+    with _span("db.query_recent_metrics"):
+        conn = get_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT ts, metric_name, value
+            FROM spike_metrics
+            WHERE ts > NOW() - (INTERVAL '1 hour' * %s) AND service = %s
+            ORDER BY ts
+        """, (hours, service))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+    with _span("compute.zscore_anomaly_detection"):
+        by_metric = {}
+        for r in rows:
+            by_metric.setdefault(r["metric_name"], []).append(float(r["value"]))
+
+        anomalies = []
+        for metric_name, values in by_metric.items():
+            arr = np.array(values)
+            mu, sigma = arr.mean(), arr.std()
+            if sigma == 0:
+                continue
+            z_scores = (arr - mu) / sigma
+            for i, z in enumerate(z_scores):
+                if abs(z) > 3:
+                    anomalies.append({
+                        "metric": metric_name,
+                        "value": round(float(arr[i]), 4),
+                        "z_score": round(float(z), 2),
+                    })
+
+    with _span("cache.redis_readthrough") as _:
+        cache_key = f"trace-demo:{service}:{hours}h"
+        cached = None
+        try:
+            cached = _redis_req("GET", f"/get/{cache_key}")
+        except Exception:
+            pass
+        cache_hit = bool(cached and cached.get("result"))
+        if not cache_hit:
+            try:
+                _redis_req("POST", f"/setex/{cache_key}/60/1")
+            except Exception:
+                pass
+
+    computation_ms = (time.perf_counter() - t0) * 1000
+
+    trace_id = None
+    if tracer:
+        span = trace.get_current_span()
+        ctx = span.get_span_context()
+        if ctx and ctx.trace_id:
+            trace_id = format(ctx.trace_id, "032x")
+
+    return {
+        "service": service,
+        "window": f"{hours}h",
+        "rows_scanned": len(rows),
+        "anomalies_found": len(anomalies),
+        "anomalies": anomalies[:20],
+        "cache_hit": cache_hit,
+        "computation_ms": round(computation_ms, 2),
+        "trace_id": trace_id,
+        "tracing_enabled": TRACING_ENABLED,
+    }
