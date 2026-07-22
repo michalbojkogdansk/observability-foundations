@@ -335,9 +335,10 @@ ORDER BY bucket DESC, metric_name;</pre>
     <div class="glass-card p-6 md:p-8">
       <h2 class="text-2xl font-bold mb-1">Scenario 3 — OpenTelemetry Trace Explorer</h2>
       <div class="flex items-center gap-2 mb-3">
-        <span class="arch-badge arch-badge-amber" id="otel-status-badge">🔧 Backend ready — Grafana Cloud wiring pending</span>
+        <span class="arch-badge arch-badge-green" id="otel-status-badge">✓ Live — tracing to Grafana Cloud</span>
       </div>
-      <p class="mb-5" style="color:#6b7280">Run a request that touches three hops — a Neon query, a Python z-score pass, and a Redis cache check — instrumented with the OpenTelemetry Python SDK. Traces export via OTLP to Grafana Cloud Tempo so you can see exactly which span cost the time.</p>
+      <p class="mb-2" style="color:#6b7280">Click the button and one request runs through three real hops — a Neon query, a z-score anomaly pass in Python, and a Redis cache check — instrumented end-to-end with the OpenTelemetry SDK. Each request gets a trace ID that opens directly in Grafana Tempo, broken down span by span so you can see exactly which hop cost the time.</p>
+      <p class="mb-5" style="color:#6b7280">Scenarios 1 and 2 taught you to detect that something is wrong. This one teaches the next step: once you know a request is slow, a trace tells you <em>where</em> — not "the API is slow," but "94% of this specific request's time sat in one Postgres query." That's the difference between a metrics dashboard, which tells you something's off, and a trace, which tells you what to fix first. It's the same instinct that separates guessing at root cause from actually finding it during an incident.</p>
 
       <div class="two-panel mb-4">
         <div class="glass-card p-5">
@@ -380,16 +381,6 @@ ORDER BY bucket DESC, metric_name;</pre>
           </div>
           <div id="otel-anomaly-list" class="text-sm mb-3" style="color:#6b7280"></div>
           <div id="otel-trace-link"></div>
-        </div>
-      </div>
-
-      <div class="glass-card p-5 mt-4" style="background:rgba(245,158,11,.04);border:1px dashed #f59e0b" id="otel-coming-soon">
-        <div class="flex items-start gap-3">
-          <span style="font-size:1.5rem">🛠️</span>
-          <div>
-            <div class="font-semibold mb-1">Coming soon</div>
-            <p class="text-sm" style="color:#6b7280">Spans are generated on every request already. Deep-linking into Tempo needs your Grafana Cloud OTLP endpoint wired into Render's environment — once that's set, the trace ID above will resolve to a live trace view.</p>
-          </div>
         </div>
       </div>
     </div>
@@ -768,7 +759,6 @@ async function runTraceDemo() {
 
     var linkEl = document.getElementById('otel-trace-link');
     var badgeEl = document.getElementById('otel-status-badge');
-    var comingSoonEl = document.getElementById('otel-coming-soon');
     if (data.trace_id) {
       linkEl.innerHTML = '<a href="' + tempoTraceUrl(data.trace_id) + '" target="_blank" rel="noopener" class="font-semibold" style="color:#4f46e5">View trace in Tempo →</a>';
     } else {
@@ -776,8 +766,10 @@ async function runTraceDemo() {
     }
     if (data.tracing_enabled) {
       badgeEl.className = 'arch-badge arch-badge-green';
-      badgeEl.textContent = '✓ Tracing active — exporting to Grafana Cloud';
-      comingSoonEl.style.display = 'none';
+      badgeEl.textContent = '✓ Live — tracing to Grafana Cloud';
+    } else {
+      badgeEl.className = 'arch-badge arch-badge-amber';
+      badgeEl.textContent = '⚠ Tracing not active on backend — check Render env vars';
     }
 
     resultsEl.style.display = 'block';
