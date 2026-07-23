@@ -15,25 +15,41 @@
 <link rel="stylesheet" href="shared/style.css" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-  .obs-shell{background:#111318;border:1px solid #262b36;border-radius:14px;padding:1.5rem;color:#c7cad1}
-  .obs-panel{background:#181b22;border:1px solid #262b36;border-radius:10px;padding:1rem}
-  .obs-panel-title{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#8b90a0;margin-bottom:.6rem;display:flex;align-items:center;justify-content:space-between}
-  .obs-stat{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.6rem;color:#e8eaf0}
-  .obs-stat-label{font-size:.72rem;color:#6b7080}
-  .obs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}
-  .obs-node{background:#1c2029;border:1px solid #2b3140;border-radius:8px;padding:.6rem .9rem;font-size:.82rem;display:flex;align-items:center;gap:.5rem}
-  .obs-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-  .dot-green{background:#3ecf8e;box-shadow:0 0 6px #3ecf8e}
-  .dot-amber{background:#f0a020;box-shadow:0 0 6px #f0a020}
-  .dot-red{background:#e5484d;box-shadow:0 0 6px #e5484d}
-  .obs-log-line{font-family:ui-monospace,monospace;font-size:.74rem;padding:.25rem 0;border-bottom:1px solid #20242e;color:#a6abb8}
-  .obs-log-line .sev-crit{color:#e5484d}
-  .obs-log-line .sev-warn{color:#f0a020}
-  .obs-log-line .sev-info{color:#5eb3f5}
-  .obs-alert-row{display:flex;justify-content:space-between;font-size:.8rem;padding:.4rem 0;border-bottom:1px solid #20242e}
-  .obs-badge-soon{background:#3a2f10;color:#f0a020;font-size:.7rem;padding:.2rem .55rem;border-radius:999px;font-weight:600}
+  .gf-shell{background:#111217;border:1px solid #2c3235;border-radius:4px;color:#d8d9da;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
+  .gf-topbar{background:#181b1f;border-bottom:1px solid #2c3235;padding:.6rem 1rem;display:flex;align-items:center;gap:.6rem;font-size:.85rem;color:#8e9297}
+  .gf-topbar b{color:#d8d9da;font-weight:500}
+  .gf-body{padding:1rem}
+  .gf-panel{background:#181b1f;border:1px solid #2c3235;border-radius:3px}
+  .gf-panel-head{padding:.5rem .75rem;border-bottom:1px solid #2c3235;font-size:.8rem;color:#d8d9da;display:flex;align-items:center;justify-content:space-between}
+  .gf-panel-head .u{color:#8e9297;font-size:.72rem}
+  .gf-panel-body{padding:.6rem .75rem}
+  .gf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:.75rem;margin-bottom:.75rem}
+  .gf-stat{font-size:1.5rem;color:#d8d9da;font-weight:500;line-height:1.2}
+  .gf-stat-sub{font-size:.72rem;color:#8e9297;margin-bottom:.4rem}
+  .gf-chart-wrap{position:relative;height:90px;width:100%}
+  .gf-node{background:#111217;border:1px solid #2c3235;border-radius:3px;padding:.4rem .7rem;font-size:.8rem;display:flex;align-items:center;gap:.45rem;color:#d8d9da}
+  .gf-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .dot-green{background:#6ccf8e}
+  .dot-amber{background:#f5a623}
+  .dot-red{background:#e0526e}
+  .gf-log{font-size:.75rem;padding:.28rem 0;border-bottom:1px solid #22262b;color:#a4a8ad;font-family:ui-monospace,Menlo,monospace}
+  .gf-log .sev-crit{color:#e0526e}
+  .gf-log .sev-warn{color:#f5a623}
+  .gf-log .sev-info{color:#6e9fd8}
+  .gf-alert-row{display:flex;justify-content:space-between;font-size:.8rem;padding:.4rem 0;border-bottom:1px solid #22262b;color:#d8d9da}
+  .gf-badge-soon{background:#3a2f10;color:#f5a623;font-size:.68rem;padding:.15rem .5rem;border-radius:3px;font-weight:500}
+  .gf-trace-title{font-size:.95rem;color:#d8d9da;margin-bottom:.15rem}
+  .gf-trace-meta{font-size:.72rem;color:#8e9297;margin-bottom:.75rem}
+  .gf-trace-meta code{color:#a4a8ad;font-family:ui-monospace,Menlo,monospace}
+  .gf-waterfall-row{display:grid;grid-template-columns:230px 1fr 60px;align-items:center;gap:.5rem;padding:.32rem 0;border-bottom:1px solid #22262b;font-size:.76rem}
+  .gf-waterfall-row .name{color:#a4a8ad;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .gf-waterfall-row .name.root{color:#d8d9da;font-weight:500}
+  .gf-waterfall-track{position:relative;height:14px;background:#111217;border-radius:2px}
+  .gf-waterfall-bar{position:absolute;top:0;height:100%;border-radius:2px;background:#e8a565}
+  .gf-waterfall-bar.root{background:#5b6472}
+  .gf-waterfall-dur{color:#8e9297;text-align:right;font-family:ui-monospace,Menlo,monospace}
   .tool-chip{display:flex;align-items:center;gap:.5rem;background:var(--bg2,#f8f9fb);border:1px solid rgba(148,163,184,.25);border-radius:10px;padding:.55rem .9rem;font-size:.85rem}
-  .dark .tool-chip{background:#181b22;border-color:#2b3140;color:#c7cad1}
+  .dark .tool-chip{background:#181b1f;border-color:#2c3235;color:#d8d9da}
 </style>
 </head>
 <body class="min-h-screen">
@@ -44,74 +60,106 @@
   <div class="text-center mb-8">
     <div class="flex items-center justify-center gap-3 mb-2">
       <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight text-black">Observability Dashboard</h1>
-      <span class="obs-badge-soon">🚧 Coming soon</span>
+      <span class="gf-badge-soon">Coming soon</span>
     </div>
     <p class="text-slate-400 max-w-2xl mx-auto">A capstone view combining every technique from the seven exercises — clustering, distributions, forecasting, anomaly detection, alert correlation, structured logs, and cache behavior — analyzing one simulated platform, live and historical.</p>
   </div>
 
-  <!-- Mockup shell -->
-  <div class="obs-shell mb-10">
-
-    <!-- Topology strip -->
-    <div class="obs-panel mb-4">
-      <div class="obs-panel-title">Platform topology</div>
-      <div class="flex flex-wrap gap-3">
-        <div class="obs-node"><span class="obs-dot dot-green"></span>api-gateway</div>
-        <div class="obs-node"><span class="obs-dot dot-amber"></span>payment-service</div>
-        <div class="obs-node"><span class="obs-dot dot-red"></span>database</div>
-        <div class="obs-node"><span class="obs-dot dot-green"></span>cache</div>
-      </div>
+  <div class="gf-shell mb-10">
+    <div class="gf-topbar">
+      <span>Explore</span><span>›</span><b>observability-dashboard</b>
     </div>
+    <div class="gf-body">
 
-    <div class="obs-grid mb-4">
-
-      <div class="obs-panel">
-        <div class="obs-panel-title">P99 latency <span>ms</span></div>
-        <div class="obs-stat">482</div>
-        <div class="obs-stat-label">forecast: 540 in 2h (regression)</div>
-        <canvas id="mockForecast" height="90"></canvas>
+      <div class="gf-panel mb-3">
+        <div class="gf-panel-head"><span>Platform topology</span><span class="u">4 services</span></div>
+        <div class="gf-panel-body flex flex-wrap gap-2">
+          <div class="gf-node"><span class="gf-dot dot-green"></span>api-gateway</div>
+          <div class="gf-node"><span class="gf-dot dot-amber"></span>payment-service</div>
+          <div class="gf-node"><span class="gf-dot dot-red"></span>database</div>
+          <div class="gf-node"><span class="gf-dot dot-green"></span>cache</div>
+        </div>
       </div>
 
-      <div class="obs-panel">
-        <div class="obs-panel-title">Latency distribution <span>bins</span></div>
-        <canvas id="mockHist" height="110"></canvas>
+      <div class="gf-grid">
+
+        <div class="gf-panel">
+          <div class="gf-panel-head"><span>P99 latency</span><span class="u">ms</span></div>
+          <div class="gf-panel-body">
+            <div class="gf-stat">482</div>
+            <div class="gf-stat-sub">forecast: 540 in 2h (regression)</div>
+            <div class="gf-chart-wrap"><canvas id="mockForecast"></canvas></div>
+          </div>
+        </div>
+
+        <div class="gf-panel">
+          <div class="gf-panel-head"><span>Latency distribution</span><span class="u">bins</span></div>
+          <div class="gf-panel-body"><div class="gf-chart-wrap" style="height:120px"><canvas id="mockHist"></canvas></div></div>
+        </div>
+
+        <div class="gf-panel">
+          <div class="gf-panel-head"><span>Anomalies (z-score)</span><span class="u">live</span></div>
+          <div class="gf-panel-body"><div class="gf-chart-wrap" style="height:120px"><canvas id="mockAnomaly"></canvas></div></div>
+        </div>
+
+        <div class="gf-panel">
+          <div class="gf-panel-head"><span>Alert correlation</span><span class="u">47 → 3</span></div>
+          <div class="gf-panel-body">
+            <div class="gf-alert-row"><span>database latency cascade</span><span style="color:#e0526e">critical</span></div>
+            <div class="gf-alert-row"><span>payment-service error burst</span><span style="color:#f5a623">high</span></div>
+            <div class="gf-alert-row"><span>cache eviction spike</span><span style="color:#f5a623">warning</span></div>
+          </div>
+        </div>
+
+        <div class="gf-panel">
+          <div class="gf-panel-head"><span>Live log stream</span><span class="u">structured</span></div>
+          <div class="gf-panel-body">
+            <div class="gf-log"><span class="sev-crit">CRIT</span> database latency_ms=1502 svc=database</div>
+            <div class="gf-log"><span class="sev-warn">WARN</span> cache hit_ratio=0.61 svc=cache</div>
+            <div class="gf-log"><span class="sev-info">INFO</span> request_id=8f21 svc=api-gateway status=200</div>
+            <div class="gf-log"><span class="sev-warn">WARN</span> payment-service error_rate=0.21 svc=payment-service</div>
+          </div>
+        </div>
+
+        <div class="gf-panel">
+          <div class="gf-panel-head"><span>Cache-aside latency</span><span class="u">bimodal</span></div>
+          <div class="gf-panel-body"><div class="gf-chart-wrap" style="height:120px"><canvas id="mockBimodal"></canvas></div></div>
+        </div>
+
       </div>
 
-      <div class="obs-panel">
-        <div class="obs-panel-title">Anomalies (z-score) <span>live</span></div>
-        <canvas id="mockAnomaly" height="110"></canvas>
-      </div>
+      <div class="gf-panel">
+        <div class="gf-panel-head"><span>Trace explorer</span><span class="u">Grafana Tempo</span></div>
+        <div class="gf-panel-body">
+          <div class="gf-trace-title">regression-api: GET /spikes/trace-demo</div>
+          <div class="gf-trace-meta">Trace ID <code>9a092b473cce76a0d911c5cdbae1866c</code> &nbsp;·&nbsp; Duration 3.86s &nbsp;·&nbsp; Services 1</div>
 
-      <div class="obs-panel">
-        <div class="obs-panel-title">Alert correlation <span>47 → 3</span></div>
-        <div class="obs-alert-row"><span>database latency cascade</span><span class="text-red-400">critical</span></div>
-        <div class="obs-alert-row"><span>payment-service error burst</span><span class="text-amber-400">high</span></div>
-        <div class="obs-alert-row"><span>cache eviction spike</span><span class="text-amber-400">warning</span></div>
-      </div>
-
-      <div class="obs-panel">
-        <div class="obs-panel-title">Live log stream <span>structured</span></div>
-        <div class="obs-log-line"><span class="sev-crit">CRIT</span> database latency_ms=1502 svc=database</div>
-        <div class="obs-log-line"><span class="sev-warn">WARN</span> cache hit_ratio=0.61 svc=cache</div>
-        <div class="obs-log-line"><span class="sev-info">INFO</span> request_id=8f21 svc=api-gateway status=200</div>
-        <div class="obs-log-line"><span class="sev-warn">WARN</span> payment-service error_rate=0.21 svc=payment-service</div>
-      </div>
-
-      <div class="obs-panel">
-        <div class="obs-panel-title">Cache-aside latency <span>bimodal</span></div>
-        <canvas id="mockBimodal" height="110"></canvas>
+          <div class="gf-waterfall-row">
+            <div class="name root">regression-api GET /spikes/trace-demo</div>
+            <div class="gf-waterfall-track"><div class="gf-waterfall-bar root" style="left:0%;width:100%"></div></div>
+            <div class="gf-waterfall-dur">3.86s</div>
+          </div>
+          <div class="gf-waterfall-row">
+            <div class="name">db.query_recent_metrics</div>
+            <div class="gf-waterfall-track"><div class="gf-waterfall-bar" style="left:1%;width:80%"></div></div>
+            <div class="gf-waterfall-dur">3.19s</div>
+          </div>
+          <div class="gf-waterfall-row">
+            <div class="name">compute.zscore_anomaly_detection</div>
+            <div class="gf-waterfall-track"><div class="gf-waterfall-bar" style="left:82%;width:2.5%"></div></div>
+            <div class="gf-waterfall-dur">96.14ms</div>
+          </div>
+          <div class="gf-waterfall-row">
+            <div class="name">cache.redis_readthrough</div>
+            <div class="gf-waterfall-track"><div class="gf-waterfall-bar" style="left:85%;width:11%"></div></div>
+            <div class="gf-waterfall-dur">430.58ms</div>
+          </div>
+        </div>
       </div>
 
     </div>
-
-    <div class="obs-panel">
-      <div class="obs-panel-title">Trace explorer</div>
-      <div class="text-sm" style="color:#8b90a0">Click any anomaly above to open its full request trace — db query, compute, cache — span by span in Grafana Tempo.</div>
-    </div>
-
   </div>
 
-  <!-- Tools used -->
   <div class="mb-6">
     <h2 class="text-xl font-bold mb-1 text-black">Tools used in this demo</h2>
     <p class="text-slate-400 text-sm mb-4">Same infrastructure already powering the Regression and Spikes exercises — nothing new to provision.</p>
@@ -137,8 +185,8 @@ window.toggleTheme = toggleTheme;
 <script src="shared/nav.js"></script>
 
 <script>
-Chart.defaults.color = '#8b90a0';
-Chart.defaults.borderColor = '#262b36';
+Chart.defaults.color = '#8e9297';
+Chart.defaults.borderColor = '#2c3235';
 Chart.defaults.font.size = 10;
 
 new Chart(document.getElementById('mockForecast'), {
@@ -146,35 +194,35 @@ new Chart(document.getElementById('mockForecast'), {
   data: {
     labels: ['-6h','-5h','-4h','-3h','-2h','-1h','now','+1h','+2h'],
     datasets: [
-      { data: [410,420,435,440,455,470,482,null,null], borderColor:'#5eb3f5', borderWidth:2, pointRadius:0, tension:.3 },
-      { data: [null,null,null,null,null,null,482,510,540], borderColor:'#f0a020', borderDash:[4,4], borderWidth:2, pointRadius:0, tension:.3 }
+      { data: [410,420,435,440,455,470,482,null,null], borderColor:'#6e9fd8', borderWidth:2, pointRadius:0, tension:.3 },
+      { data: [null,null,null,null,null,null,482,510,540], borderColor:'#f5a623', borderDash:[4,4], borderWidth:2, pointRadius:0, tension:.3 }
     ]
   },
-  options: { plugins:{legend:{display:false}}, scales:{x:{display:false},y:{display:false}}, responsive:true, maintainAspectRatio:false }
+  options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{display:false},y:{display:false}} }
 });
 
 new Chart(document.getElementById('mockHist'), {
   type: 'bar',
   data: { labels:['0-50','50-100','100-150','150-200','200-250','250-300','300+'],
-    datasets:[{ data:[12,38,64,41,19,8,3], backgroundColor:'#3a4a63', borderRadius:2 }] },
-  options: { plugins:{legend:{display:false}}, scales:{x:{display:false},y:{display:false}}, responsive:true, maintainAspectRatio:false }
+    datasets:[{ data:[12,38,64,41,19,8,3], backgroundColor:'#3d4552', borderRadius:2 }] },
+  options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{display:false},y:{display:false}} }
 });
 
 new Chart(document.getElementById('mockAnomaly'), {
   type: 'scatter',
   data: { datasets:[
     { data:[{x:1,y:2},{x:2,y:1.8},{x:3,y:2.1},{x:4,y:1.9},{x:5,y:5.9},{x:6,y:2.0},{x:7,y:1.7}],
-      backgroundColor: ['#3ecf8e','#3ecf8e','#3ecf8e','#3ecf8e','#e5484d','#3ecf8e','#3ecf8e'],
+      backgroundColor: ['#6ccf8e','#6ccf8e','#6ccf8e','#6ccf8e','#e0526e','#6ccf8e','#6ccf8e'],
       pointRadius:5 }
   ]},
-  options: { plugins:{legend:{display:false}}, scales:{x:{display:false},y:{display:false}}, responsive:true, maintainAspectRatio:false }
+  options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{display:false},y:{display:false}} }
 });
 
 new Chart(document.getElementById('mockBimodal'), {
   type: 'bar',
   data: { labels:['5ms','15ms','25ms','35ms','80ms','120ms','160ms','200ms'],
-    datasets:[{ data:[5,42,58,20,4,22,55,18], backgroundColor:'#7c6ae8', borderRadius:2 }] },
-  options: { plugins:{legend:{display:false}}, scales:{x:{display:false},y:{display:false}}, responsive:true, maintainAspectRatio:false }
+    datasets:[{ data:[5,42,58,20,4,22,55,18], backgroundColor:'#8a7cd8', borderRadius:2 }] },
+  options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{display:false},y:{display:false}} }
 });
 </script>
 
