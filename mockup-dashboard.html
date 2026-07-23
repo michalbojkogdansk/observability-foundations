@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Observability Dashboard | Observability Foundations</title>
+<link rel="stylesheet" href="shared/style.css">
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<script>
+  (function(){var t=localStorage.getItem('de-theme');if(!t)t='light';document.documentElement.classList.toggle('dark',t==='dark')})();
+</script>
+<link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config = { darkMode: 'class' }</script>
+<link rel="stylesheet" href="shared/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  .obs-shell{background:#111318;border:1px solid #262b36;border-radius:14px;padding:1.5rem;color:#c7cad1}
+  .obs-panel{background:#181b22;border:1px solid #262b36;border-radius:10px;padding:1rem}
+  .obs-panel-title{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:#8b90a0;margin-bottom:.6rem;display:flex;align-items:center;justify-content:space-between}
+  .obs-stat{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.6rem;color:#e8eaf0}
+  .obs-stat-label{font-size:.72rem;color:#6b7080}
+  .obs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}
+  .obs-node{background:#1c2029;border:1px solid #2b3140;border-radius:8px;padding:.6rem .9rem;font-size:.82rem;display:flex;align-items:center;gap:.5rem}
+  .obs-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .dot-green{background:#3ecf8e;box-shadow:0 0 6px #3ecf8e}
+  .dot-amber{background:#f0a020;box-shadow:0 0 6px #f0a020}
+  .dot-red{background:#e5484d;box-shadow:0 0 6px #e5484d}
+  .obs-log-line{font-family:ui-monospace,monospace;font-size:.74rem;padding:.25rem 0;border-bottom:1px solid #20242e;color:#a6abb8}
+  .obs-log-line .sev-crit{color:#e5484d}
+  .obs-log-line .sev-warn{color:#f0a020}
+  .obs-log-line .sev-info{color:#5eb3f5}
+  .obs-alert-row{display:flex;justify-content:space-between;font-size:.8rem;padding:.4rem 0;border-bottom:1px solid #20242e}
+  .obs-badge-soon{background:#3a2f10;color:#f0a020;font-size:.7rem;padding:.2rem .55rem;border-radius:999px;font-weight:600}
+  .tool-chip{display:flex;align-items:center;gap:.5rem;background:var(--bg2,#f8f9fb);border:1px solid rgba(148,163,184,.25);border-radius:10px;padding:.55rem .9rem;font-size:.85rem}
+  .dark .tool-chip{background:#181b22;border-color:#2b3140;color:#c7cad1}
+</style>
+</head>
+<body class="min-h-screen">
+<div id="site-nav"></div>
+
+<main class="max-w-6xl mx-auto px-4 py-10">
+
+  <div class="text-center mb-8">
+    <div class="flex items-center justify-center gap-3 mb-2">
+      <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight text-black">Observability Dashboard</h1>
+      <span class="obs-badge-soon">🚧 Coming soon</span>
+    </div>
+    <p class="text-slate-400 max-w-2xl mx-auto">A capstone view combining every technique from the seven exercises — clustering, distributions, forecasting, anomaly detection, alert correlation, structured logs, and cache behavior — analyzing one simulated platform, live and historical.</p>
+  </div>
+
+  <!-- Mockup shell -->
+  <div class="obs-shell mb-10">
+
+    <!-- Topology strip -->
+    <div class="obs-panel mb-4">
+      <div class="obs-panel-title">Platform topology</div>
+      <div class="flex flex-wrap gap-3">
+        <div class="obs-node"><span class="obs-dot dot-green"></span>api-gateway</div>
+        <div class="obs-node"><span class="obs-dot dot-amber"></span>payment-service</div>
+        <div class="obs-node"><span class="obs-dot dot-red"></span>database</div>
+        <div class="obs-node"><span class="obs-dot dot-green"></span>cache</div>
+      </div>
+    </div>
+
+    <div class="obs-grid mb-4">
+
+      <div class="obs-panel">
+        <div class="obs-panel-title">P99 latency <span>ms</span></div>
+        <div class="obs-stat">482</div>
+        <div class="obs-stat-label">forecast: 540 in 2h (regression)</div>
+        <canvas id="mockForecast" height="90"></canvas>
+      </div>
+
+      <div class="obs-panel">
+        <div class="obs-panel-title">Latency distribution <span>bins</span></div>
+        <canvas id="mockHist" height="110"></canvas>
+      </div>
+
+      <div class="obs-panel">
+        <div class="obs-panel-title">Anomalies (z-score) <span>live</span></div>
+        <canvas id="mockAnomaly" height="110"></canvas>
+      </div>
+
+      <div class="obs-panel">
+        <div class="obs-panel-title">Alert correlation <span>47 → 3</span></div>
+        <div class="obs-alert-row"><span>database latency cascade</span><span class="text-red-400">critical</span></div>
+        <div class="obs-alert-row"><span>payment-service error burst</span><span class="text-amber-400">high</span></div>
+        <div class="obs-alert-row"><span>cache eviction spike</span><span class="text-amber-400">warning</span></div>
+      </div>
+
+      <div class="obs-panel">
+        <div class="obs-panel-title">Live log stream <span>structured</span></div>
+        <div class="obs-log-line"><span class="sev-crit">CRIT</span> database latency_ms=1502 svc=database</div>
+        <div class="obs-log-line"><span class="sev-warn">WARN</span> cache hit_ratio=0.61 svc=cache</div>
+        <div class="obs-log-line"><span class="sev-info">INFO</span> request_id=8f21 svc=api-gateway status=200</div>
+        <div class="obs-log-line"><span class="sev-warn">WARN</span> payment-service error_rate=0.21 svc=payment-service</div>
+      </div>
+
+      <div class="obs-panel">
+        <div class="obs-panel-title">Cache-aside latency <span>bimodal</span></div>
+        <canvas id="mockBimodal" height="110"></canvas>
+      </div>
+
+    </div>
+
+    <div class="obs-panel">
+      <div class="obs-panel-title">Trace explorer</div>
+      <div class="text-sm" style="color:#8b90a0">Click any anomaly above to open its full request trace — db query, compute, cache — span by span in Grafana Tempo.</div>
+    </div>
+
+  </div>
+
+  <!-- Tools used -->
+  <div class="mb-6">
+    <h2 class="text-xl font-bold mb-1 text-black">Tools used in this demo</h2>
+    <p class="text-slate-400 text-sm mb-4">Same infrastructure already powering the Regression and Spikes exercises — nothing new to provision.</p>
+    <div class="flex flex-wrap gap-3">
+      <div class="tool-chip"><img src="https://github.com/favicon.ico" width="18" height="18" alt="" />GitHub</div>
+      <div class="tool-chip"><img src="https://github.com/favicon.ico" width="18" height="18" alt="" />GitHub Pages</div>
+      <div class="tool-chip"><img src="https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/render.svg" width="18" height="18" alt="" style="filter:invert(45%) sepia(60%) saturate(500%) hue-rotate(200deg)" />Render</div>
+      <div class="tool-chip"><img src="https://www.cloudflare.com/favicon.ico" width="18" height="18" alt="" />Cloudflare Workers</div>
+      <div class="tool-chip"><img src="https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/neon.svg" width="18" height="18" alt="" style="filter:invert(45%) sepia(60%) saturate(500%) hue-rotate(200deg)" />Neon Postgres</div>
+      <div class="tool-chip"><img src="https://redis.io/favicon.ico" width="18" height="18" alt="" />Redis</div>
+      <div class="tool-chip"><img src="https://www.google.com/s2/favicons?domain=redpanda.com&sz=64" width="18" height="18" alt="" />Redpanda</div>
+      <div class="tool-chip"><img src="https://grafana.com/favicon.ico" width="18" height="18" alt="" />Grafana Cloud</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+function applyTheme(theme){document.documentElement.classList.toggle('dark', theme === 'dark');localStorage.setItem('de-theme', theme);}
+function toggleTheme(){applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark');}
+window.toggleTheme = toggleTheme;
+</script>
+<script src="shared/nav.js"></script>
+
+<script>
+Chart.defaults.color = '#8b90a0';
+Chart.defaults.borderColor = '#262b36';
+Chart.defaults.font.size = 10;
+
+new Chart(document.getElementById('mockForecast'), {
+  type: 'line',
+  data: {
+    labels: ['-6h','-5h','-4h','-3h','-2h','-1h','now','+1h','+2h'],
+    datasets: [
+      { data: [410,420,435,440,455,470,482,null,null], borderColor:'#5eb3f5', borderWidth:2, pointRadius:0, tension:.3 },
+      { data: [null,null,null,null,null,null,482,510,540], borderColor:'#f0a020', borderDash:[4,4], borderWidth:2, pointRadius:0, tension:.3 }
+    ]
+  },
+  options: { plugins:{legend:{display:false}}, scales:{x:{display:false},y:{display:false}}, responsive:true, maintainAspectRatio:false }
+});
+
+new Chart(document.getElementById('mockHist'), {
+  type: 'bar',
+  data: { labels:['0-50','50-100','100-150','150-200','200-250','250-300','300+'],
+    datasets:[{ data:[12,38,64,41,19,8,3], backgroundColor:'#3a4a63', borderRadius:2 }] },
+  options: { plugins:{legend:{display:false}}, scales:{x:{display:false},y:{display:false}}, responsive:true, maintainAspectRatio:false }
+});
+
+new Chart(document.getElementById('mockAnomaly'), {
+  type: 'scatter',
+  data: { datasets:[
+    { data:[{x:1,y:2},{x:2,y:1.8},{x:3,y:2.1},{x:4,y:1.9},{x:5,y:5.9},{x:6,y:2.0},{x:7,y:1.7}],
+      backgroundColor: ['#3ecf8e','#3ecf8e','#3ecf8e','#3ecf8e','#e5484d','#3ecf8e','#3ecf8e'],
+      pointRadius:5 }
+  ]},
+  options: { plugins:{legend:{display:false}}, scales:{x:{display:false},y:{display:false}}, responsive:true, maintainAspectRatio:false }
+});
+
+new Chart(document.getElementById('mockBimodal'), {
+  type: 'bar',
+  data: { labels:['5ms','15ms','25ms','35ms','80ms','120ms','160ms','200ms'],
+    datasets:[{ data:[5,42,58,20,4,22,55,18], backgroundColor:'#7c6ae8', borderRadius:2 }] },
+  options: { plugins:{legend:{display:false}}, scales:{x:{display:false},y:{display:false}}, responsive:true, maintainAspectRatio:false }
+});
+</script>
+
+</body>
+</html>

@@ -8,6 +8,7 @@
     { id: 'bimodal',    label: 'Bimodal Latency',    icon: '📡', href: 'bimodal.html' },
     { id: 'regression', label: 'Regression',         icon: '📈', href: 'regression.html' },
     { id: 'spikes',     label: 'Spikes & Anomalies', icon: '⚡', href: 'spikes.html' },
+    { id: 'obsdash',    label: 'Observability Dashboard', icon: '🖥️', href: 'mockup-dashboard.html' },
   ];
 
   var currentPath = window.location.pathname.split('/').pop() || 'index.html';
