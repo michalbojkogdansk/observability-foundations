@@ -15,6 +15,9 @@
 <link rel="stylesheet" href="shared/style.css" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
+  body.gf-page-body{background:#111217;margin:0}
+  .gf-page{background:#111217;color:#d8d9da;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;min-height:calc(100vh - 60px)}
+  .gf-page-inner{max-width:1400px;margin:0 auto;padding:2rem 1.5rem 3rem}
   .gf-shell{background:#111217;border:1px solid #2c3235;border-radius:4px;color:#d8d9da;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
   .gf-topbar{background:#181b1f;border-bottom:1px solid #2c3235;padding:.6rem 1rem;display:flex;align-items:center;gap:.6rem;font-size:.85rem;color:#8e9297}
   .gf-topbar b{color:#d8d9da;font-weight:500}
@@ -48,21 +51,21 @@
   .gf-waterfall-bar{position:absolute;top:0;height:100%;border-radius:2px;background:#e8a565}
   .gf-waterfall-bar.root{background:#5b6472}
   .gf-waterfall-dur{color:#8e9297;text-align:right;font-family:ui-monospace,Menlo,monospace}
-  .tool-chip{display:flex;align-items:center;gap:.5rem;background:var(--bg2,#f8f9fb);border:1px solid rgba(148,163,184,.25);border-radius:10px;padding:.55rem .9rem;font-size:.85rem}
-  .dark .tool-chip{background:#181b1f;border-color:#2c3235;color:#d8d9da}
+  .tool-chip{display:flex;align-items:center;gap:.5rem;background:#181b1f;border:1px solid #2c3235;color:#d8d9da;border-radius:10px;padding:.55rem .9rem;font-size:.85rem}
 </style>
 </head>
-<body class="min-h-screen">
+<body class="gf-page-body min-h-screen">
 <div id="site-nav"></div>
 
-<main class="max-w-6xl mx-auto px-4 py-10">
+<div class="gf-page">
+<div class="gf-page-inner">
 
   <div class="text-center mb-8">
     <div class="flex items-center justify-center gap-3 mb-2">
-      <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight text-black">Observability Dashboard</h1>
+      <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight" style="color:#d8d9da">Observability Dashboard</h1>
       <span class="gf-badge-soon">Coming soon</span>
     </div>
-    <p class="text-slate-400 max-w-2xl mx-auto">A capstone view combining every technique from the seven exercises — clustering, distributions, forecasting, anomaly detection, alert correlation, structured logs, and cache behavior — analyzing one simulated platform, live and historical.</p>
+    <p class="max-w-2xl mx-auto" style="color:#8e9297">A capstone view combining every technique from the seven exercises — clustering, distributions, forecasting, anomaly detection, alert correlation, structured logs, and cache behavior — analyzing one simulated platform, live and historical.</p>
   </div>
 
   <div class="gf-shell mb-10">
@@ -161,8 +164,8 @@
   </div>
 
   <div class="mb-6">
-    <h2 class="text-xl font-bold mb-1 text-black">Tools used in this demo</h2>
-    <p class="text-slate-400 text-sm mb-4">Same infrastructure already powering the Regression and Spikes exercises — nothing new to provision.</p>
+    <h2 class="text-xl font-bold mb-1" style="color:#d8d9da">Toolset</h2>
+    <p class="text-sm mb-4" style="color:#8e9297">Same infrastructure already powering the Regression and Spikes exercises — nothing new to provision.</p>
     <div class="flex flex-wrap gap-3">
       <div class="tool-chip"><img src="https://github.com/favicon.ico" width="18" height="18" alt="" />GitHub</div>
       <div class="tool-chip"><img src="https://github.com/favicon.ico" width="18" height="18" alt="" />GitHub Pages</div>
@@ -175,7 +178,8 @@
     </div>
   </div>
 
-</main>
+</div>
+</div>
 
 <script>
 function applyTheme(theme){document.documentElement.classList.toggle('dark', theme === 'dark');localStorage.setItem('de-theme', theme);}
