@@ -981,3 +981,21 @@ def spikes_trace_demo(
         "trace_id": trace_id,
         "tracing_enabled": TRACING_ENABLED,
     }
+
+
+# ─── Observability Dashboard (capstone): obs_tool_* seed trigger ─────────────
+
+ADMIN_SEED_KEY = os.environ.get("ADMIN_SEED_KEY", "")
+
+
+@app.post("/admin/seed-obs-tool")
+def admin_seed_obs_tool(key: str = Query(...)):
+    if not ADMIN_SEED_KEY or key != ADMIN_SEED_KEY:
+        raise HTTPException(status_code=403, detail="invalid key")
+    import obs_tool_seed
+    conn = get_conn()
+    try:
+        result = obs_tool_seed.seed(conn)
+    finally:
+        conn.close()
+    return {"seeded": True, **result}
