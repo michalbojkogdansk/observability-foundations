@@ -999,3 +999,55 @@ def admin_seed_obs_tool(key: str = Query(...)):
     finally:
         conn.close()
     return {"seeded": True, **result}
+
+
+# ─── Observability Dashboard (capstone): live generator ──────────────────────
+
+import obs_tool_live
+
+_OBS_TOOL_REDIS_KEY = obs_tool_live.OBS_TOOL_REDIS_KEY
+
+
+def _obs_tool_redis_push(event_json: str):
+    encoded = _urllib_parse.quote(event_json, safe="")
+    _redis_req("POST", f"/rpush/{_OBS_TOOL_REDIS_KEY}/{encoded}")
+    _redis_req("POST", f"/ltrim/{_OBS_TOOL_REDIS_KEY}/-500/-1")
+
+
+@app.post("/admin/obs-tool/start")
+async def admin_obs_tool_start(key: str = Query(...), hours: float = Query(default=8, ge=0.25, le=24)):
+    if not ADMIN_SEED_KEY or key != ADMIN_SEED_KEY:
+        raise HTTPException(status_code=403, detail="invalid key")
+    return obs_tool_live.start(_kafka_producer, _obs_tool_redis_push, hours)
+
+
+@app.post("/admin/obs-tool/stop")
+def admin_obs_tool_stop(key: str = Query(...)):
+    if not ADMIN_SEED_KEY or key != ADMIN_SEED_KEY:
+        raise HTTPException(status_code=403, detail="invalid key")
+    return obs_tool_live.stop()
+
+
+@app.get("/obs-tool/status")
+def obs_tool_status():
+    return obs_tool_live.state.status()
+
+
+@app.get("/obs-tool/events")
+def obs_tool_events(limit: int = Query(default=50, ge=1, le=500)):
+    raw = _redis_req("GET", f"/lrange/{_OBS_TOOL_REDIS_KEY}/-{limit}/-1").get("result", [])
+    events = []
+    for r in raw:
+        try:
+            events.append(json.loads(r))
+        except Exception:
+            pass
+    return {"events": list(reversed(events)), "count": len(events)}
+
+
+@app.delete("/obs-tool/events")
+def obs_tool_clear_events(key: str = Query(...)):
+    if not ADMIN_SEED_KEY or key != ADMIN_SEED_KEY:
+        raise HTTPException(status_code=403, detail="invalid key")
+    _redis_req("GET", f"/del/{_OBS_TOOL_REDIS_KEY}")
+    return {"cleared": True}
