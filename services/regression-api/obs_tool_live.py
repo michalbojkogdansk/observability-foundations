@@ -108,12 +108,18 @@ def _next_batch():
 
 
 def _publish_batch_blocking(producer, events, redis_push_fn):
-    """Runs on a worker thread — safe to block here, never on the event loop."""
+    """Runs on a worker thread — safe to block here, never on the event loop.
+    kafka-python's send() is async and flush() alone does NOT raise on broker-side
+    rejection (e.g. unknown topic) — futures must be checked explicitly or
+    failures pass completely silently."""
+    futures = []
     for ev in events:
         ev_json = json.dumps(ev)
-        producer.send(OBS_TOOL_TOPIC, key=ev["id"], value=ev_json)
+        futures.append(producer.send(OBS_TOOL_TOPIC, key=ev["id"], value=ev_json))
         redis_push_fn(ev_json)
-    producer.flush(timeout=3)
+    producer.flush(timeout=5)
+    for f in futures:
+        f.get(timeout=1)  # raises if that message's delivery actually failed
 
 
 async def _run_loop(kafka_producer_fn, redis_push_fn):
