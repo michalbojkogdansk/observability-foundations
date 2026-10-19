@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Logika zdań — trener notacji</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<header class="site-header">
+  <h1>Logika zdań — trener notacji</h1>
+  <p>Ćwicz tłumaczenie zdań na formuły rachunku zdań: parser, drzewo rozbioru i sprawdzanie odpowiedzi.</p>
+</header>
+
+<main>
+  <div class="panel">
+      <div class="task-nav">
+        <button type="button" id="task-prev" class="secondary">◀ Poprzednie</button>
+        <select id="task-select"></select>
+        <button type="button" id="task-next" class="secondary">Następne ▶</button>
+      </div>
+      <div class="task-progress" id="task-progress"></div>
+
+      <p class="sentence" id="task-sentence">Wczytywanie zadań…</p>
+
+      <table class="dict" id="task-dict">
+        <thead><tr><th>Symbol</th><th>Znaczenie</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h3>Twoja formuła</h3>
+      <div class="symbol-buttons" id="task-symbols"></div>
+      <textarea class="formula-input" id="task-input" rows="2" placeholder="np. ¬p   albo   !p"></textarea>
+      <pre class="pos-marker" id="task-pos-marker"></pre>
+      <div class="status-line" id="task-status"></div>
+      <div class="tree-wrap"><div id="task-tree"></div></div>
+      <button type="button" class="primary" id="task-check">Sprawdź</button>
+
+      <div class="result-panel" id="task-result"></div>
+    </div>
+
+  <!-- ============================== CHEAT SHEET ============================== -->
+  <details class="panel cheatsheet" id="cheatsheet">
+    <summary>Ściągawka z symbolami</summary>
+    <table class="cheatsheet">
+      <thead>
+        <tr><th>Symbol</th><th>Nazwa</th><th>Jak czytać na głos</th><th>Odpowiednik w kodzie</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="symbol">¬p</td>
+          <td>negacja</td>
+          <td>„nie p”</td>
+          <td><code>!p</code></td>
+        </tr>
+        <tr>
+          <td class="symbol">p ∧ q</td>
+          <td>koniunkcja</td>
+          <td>„p i q”</td>
+          <td><code>p &amp;&amp; q</code></td>
+        </tr>
+        <tr>
+          <td class="symbol">p ∨ q</td>
+          <td>alternatywa</td>
+          <td>„p lub q”</td>
+          <td><code>p || q</code></td>
+        </tr>
+        <tr>
+          <td class="symbol">p → q</td>
+          <td>implikacja</td>
+          <td>„jeśli p, to q”</td>
+          <td><code>!p || q</code></td>
+        </tr>
+        <tr>
+          <td class="symbol">⊥</td>
+          <td>falsum (stała „fałsz”)</td>
+          <td>„fałsz”</td>
+          <td><code>0</code></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="muted">
+      W polu formuły możesz pisać zarówno symbole (¬ ∧ ∨ → ⊥), jak i ASCII: <code>!</code> lub <code>~</code> za ¬,
+      <code>&amp;</code> lub <code>&amp;&amp;</code> za ∧, <code>|</code> lub <code>||</code> za ∨, <code>-&gt;</code> za →,
+      <code>0</code> za ⊥. Nawiasy zawsze <code>(</code> <code>)</code>.
+    </p>
+    <p class="muted">
+      ⊥ (falsum) to stała, nie zmienna — zawsze ma wartość fałsz i nie trzeba jej umieszczać w słowniku atomów zadania.
+    </p>
+    <p class="muted">
+      Priorytety: ¬ wiąże najmocniej, potem ∧ i ∨ (równa siła, trzeba je rozdzielać nawiasami przy mieszaniu),
+      najsłabiej →. Implikacja wiąże w prawo: <code>a → b → c</code> to <code>a → (b → c)</code>.
+    </p>
+  </details>
+</main>
+
+<footer class="site-footer">
+  Logika zdań — trener notacji, wersja 1. Działa w pełni lokalnie w przeglądarce, bez backendu i bez modelu językowego.
+</footer>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

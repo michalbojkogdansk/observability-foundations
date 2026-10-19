@@ -1,0 +1,120 @@
+[
+  {
+    "id": 1,
+    "zdanie": "Hasło nie jest puste.",
+    "atomy": { "p": "hasło jest puste" },
+    "wzorzec": "¬p",
+    "uwaga": "Wybór atomu to decyzja tłumacza: zamiast p = \"hasło jest puste\" i formuły ¬p, można było przyjąć p = \"hasło jest niepuste\" i napisać po prostu p.",
+    "typoweBledy": []
+  },
+  {
+    "id": 2,
+    "zdanie": "Plik istnieje i jest czytelny.",
+    "atomy": { "i": "plik istnieje", "c": "plik jest czytelny" },
+    "wzorzec": "i ∧ c",
+    "uwaga": "Spójnik \"i\" w języku naturalnym tłumaczymy bezpośrednio na ∧.",
+    "typoweBledy": []
+  },
+  {
+    "id": 3,
+    "zdanie": "Płatność można wykonać kartą lub BLIK-iem.",
+    "atomy": { "k": "płatność kartą", "b": "płatność BLIK-iem" },
+    "wzorzec": "k ∨ b",
+    "uwaga": "To \"lub\" jest nierozłączne (alternatywa) — obie opcje naraz są dopuszczone, w przeciwieństwie do potocznego \"albo... albo\".",
+    "typoweBledy": []
+  },
+  {
+    "id": 4,
+    "zdanie": "Jeśli użytkownik nie jest zalogowany, system zwraca błąd 401.",
+    "atomy": { "z": "użytkownik jest zalogowany", "e": "system zwraca błąd 401" },
+    "wzorzec": "¬z → e",
+    "uwaga": "Warunek \"jeśli ... nie jest\" to negacja atomu wewnątrz implikacji, nie osobny spójnik.",
+    "typoweBledy": []
+  },
+  {
+    "id": 5,
+    "zdanie": "Nie jest prawdą, że serwer działa i baza odpowiada.",
+    "atomy": { "s": "serwer działa", "b": "baza odpowiada" },
+    "wzorzec": "¬(s ∧ b)",
+    "uwaga": "Negacja całej koniunkcji to ¬(s ∧ b), co jest równoważne ¬s ∨ ¬b — ale NIE ¬s ∧ ¬b. Ta reguła (negacja koniunkcji to alternatywa negacji, i odwrotnie) nazywa się prawem de Morgana.",
+    "typoweBledy": [
+      {
+        "formula": "¬s ∧ ¬b",
+        "komunikat": "To znaczy, że oba nie działają, a wymaganie mówi tylko, że co najmniej jedno nie działa."
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "zdanie": "Jeśli pole e-mail jest wypełnione i zgoda jest zaznaczona, formularz można wysłać.",
+    "atomy": { "m": "pole e-mail jest wypełnione", "z": "zgoda jest zaznaczona", "f": "formularz można wysłać" },
+    "wzorzec": "(m ∧ z) → f",
+    "uwaga": "Warunek złożony z dwóch części (\"i\") stoi przed \"jeśli\", więc trzeba go objąć nawiasem przed implikacją — choć → ma tak niski priorytet, że m ∧ z → f (bez nawiasów) też się sparsuje tak samo.",
+    "typoweBledy": [
+      {
+        "formula": "m ∧ (z → f)",
+        "komunikat": "Tu warunek \"zgoda → formularz\" dotyczy tylko zgody, a wymaganie mówi o obu polach naraz jako warunku wysłania."
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "zdanie": "Dostęp mają administratorzy lub autorzy, o ile konto jest aktywne.",
+    "atomy": { "a": "jest administratorem", "u": "jest autorem", "k": "konto jest aktywne", "d": "ma dostęp" },
+    "wzorzec": "(a ∨ u) ∧ k → d",
+    "uwaga": "\"O ile\" dotyczy całej alternatywy (administrator LUB autor), więc aktywność konta jest warunkiem dla obu ról naraz: (a ∨ u) ∧ k.",
+    "typoweBledy": [
+      {
+        "formula": "a ∨ (u ∧ k) → d",
+        "komunikat": "Tu aktywność konta dotyczy tylko autorów — administrator ominąłby ten warunek, a wymaganie mówi, że dotyczy obu ról."
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "zdanie": "Formularz wysyłamy tylko wtedy, gdy zgoda jest zaznaczona.",
+    "atomy": { "f": "formularz jest wysyłany", "z": "zgoda jest zaznaczona" },
+    "wzorzec": "f → z",
+    "uwaga": "\"Tylko wtedy, gdy\" to klasyczny sygnał warunku koniecznego (f → z: żeby zaszło f, musi zajść z — bez z nie ma f), a nie \"wtedy, gdy\" (f ↔ z) ani odwrotnej implikacji.",
+    "typoweBledy": [
+      {
+        "formula": "z → f",
+        "komunikat": "To odwrócony kierunek implikacji — zgoda jest warunkiem koniecznym do wysłania (musi wystąpić, żeby wysłanie było możliwe), a nie warunkiem wystarczającym (samo jej zaznaczenie jeszcze nie gwarantuje wysłania)."
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "zdanie": "Ten przypadek w switchu jest nieosiągalny — skoro nigdy się nie wykona, może zwrócić cokolwiek, nawet błąd połączenia z bazą.",
+    "atomy": { "w": "zwracamy błąd połączenia z bazą" },
+    "wzorzec": "⊥ → w",
+    "uwaga": "To realny wzorzec z assertUnreachable/never w TypeScripcie — skoro założenie jest fałszywe (⊥, branch nieosiągalny), formuła jest tautologią niezależnie od w (łac. ex falso quodlibet: z fałszywego założenia da się \"wyprowadzić\" dosłownie wszystko, więc taka implikacja jest zawsze prawdziwa).",
+    "typoweBledy": []
+  },
+  {
+    "id": 10,
+    "zdanie": "Jeśli kolejka zadań jest zablokowana, serwis rzuca wyjątek i się zatrzymuje.",
+    "atomy": { "z": "kolejka zadań jest zablokowana" },
+    "wzorzec": "z → ⊥",
+    "uwaga": "To logiczny odpowiednik \"if (zablokowana) throw ...\" — równoważne ¬z (kolejka nigdy nie powinna być zablokowana), ale zapis przez ⊥ oddaje intencję: \"a jeśli jednak jest, to twardy błąd\".",
+    "typoweBledy": [
+      {
+        "formula": "¬z → ⊥",
+        "komunikat": "To zapisuje odwrotnie: że brak blokady prowadzi do wyjątku — czyli serwis wywala się, gdy wszystko jest OK."
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "zdanie": "Nie da się mieć włączonego trybu offline i aktywnego połączenia z serwerem naraz — jeśli obie flagi są prawdziwe, to bug.",
+    "atomy": { "o": "tryb offline jest włączony", "p": "połączenie z serwerem jest aktywne" },
+    "wzorzec": "(o ∧ p) → ⊥",
+    "uwaga": "To ten sam wzorzec co w zadaniu 5 (prawo de Morgana), tylko nazwany po imieniu — \"niemożliwy stan\" to w kodzie konkretnie ⊥, czyli miejsce na throw/assert.",
+    "typoweBledy": [
+      {
+        "formula": "o ∧ (p → ⊥)",
+        "komunikat": "To mówi, że offline jest zawsze włączony, a samo połączenie zawsze jest błędem — co innego niż \"oba naraz to bug\"."
+      }
+    ]
+  }
+]

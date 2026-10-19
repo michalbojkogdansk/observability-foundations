@@ -1,0 +1,6 @@
+{
+  "name": "logic-trainer",
+  "private": true,
+  "type": "module",
+  "description": "Offline trener notacji rachunku zdań — no build step, no backend."
+}
